@@ -1,0 +1,23 @@
+{
+  "name": "polymarket",
+  "version": "1.0.0",
+  "description": "",
+  "main": "proxy.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TContin/Cc-s-PolyMarket.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/TContin/Cc-s-PolyMarket/issues"
+  },
+  "homepage": "https://github.com/TContin/Cc-s-PolyMarket#readme",
+  "dependencies": {
+    "better-sqlite3": "^12.8.0"
+  }
+}

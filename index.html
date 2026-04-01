@@ -455,7 +455,10 @@ body { background: var(--bg); font-family: var(--font); color: var(--text); min-
     <div class="port-panel">
       <div class="sec-head">
         <div class="sec-title">💼 我的持仓</div>
-        <button class="chip-btn" style="color:var(--red)" onclick="doReset()">重置</button>
+        <div style="display:flex;gap:6px">
+          <button class="chip-btn" style="color:var(--accent)" onclick="triggerArb()">🤖 扫描</button>
+          <button class="chip-btn" style="color:var(--red)" onclick="doReset()">重置</button>
+        </div>
       </div>
       <div id="portList"></div>
     </div>
@@ -679,7 +682,7 @@ function updateStats() {
     document.getElementById('sTopYes').textContent = Math.round(top.yes*100)+'%';
     document.getElementById('sTopName').textContent = top.question.slice(0,26)+'…';
   }
-  document.getElementById('sBal').textContent = fUSD(bal);
+  document.getElementById('sBal').textContent = fUSD(simData ? simData.balance : bal);
 }
 
 // ── TICKER ──
@@ -783,7 +786,7 @@ function renderPort() {
       </div>
     </div>`;
   }).join('');
-  document.getElementById('sBal').textContent = fUSD(bal);
+  document.getElementById('sBal').textContent = fUSD(simData ? simData.balance : bal);
 }
 
 function sellPos(idx) {
@@ -864,10 +867,11 @@ function updBal() { document.getElementById('balDisp').textContent = fUSD(bal); 
 
 // ── INIT ──
 updBal();
-renderPort();
+loadSimStatus();
 loadMarkets();
-// 每5分钟静默刷新第一页
+// 每5分钟静默刷新
 setInterval(() => loadMarkets(true), 300000);
+setInterval(loadSimStatus, 30000);
 </script>
 </body>
 </html>
