@@ -363,8 +363,8 @@ body { background: var(--bg); font-family: var(--font); color: var(--text); min-
 /* ── RESPONSIVE ── */
 @media (max-width: 900px) {
   .layout { flex-direction: column; padding: 14px 12px 28px; gap: 12px; }
-  .col-left { width: 100%; }
-  .col-right { flex: none; width: 100%; }
+  .col-left { width: 100%; order: 2; }
+  .col-right { flex: none; width: 100%; order: 1; }
   .topbar { padding: 0 14px; }
   .ticker-wrap { display: none; }
 }
