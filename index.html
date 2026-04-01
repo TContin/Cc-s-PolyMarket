@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Polymarket — 预测市场</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f2f2f7;
+  --surface: #ffffff;
+  --surface2: #f7f7fa;
+  --border: rgba(0,0,0,0.07);
+  --border-strong: rgba(0,0,0,0.12);
+  --text: #1c1c1e;
+  --text2: #6e6e73;
+  --text3: #aeaeb2;
+  --accent: #007aff;
+  --accent-bg: rgba(0,122,255,0.09);
+  --green: #34c759;
+  --green-bg: rgba(52,199,89,0.1);
+  --red: #ff3b30;
+  --red-bg: rgba(255,59,48,0.1);
+  --yellow: #ff9f0a;
+  --purple: #af52de;
+  --teal: #5ac8fa;
+  --shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 1px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 20px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+  --r: 14px;
+  --r-sm: 10px;
+  --font: 'DM Sans', -apple-system, sans-serif;
+  --font-zh: 'Noto Sans SC', 'PingFang SC', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); font-family: var(--font); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+/* ── TOPBAR ── */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(242,242,247,0.88);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--border);
+  height: 56px;
+  display: flex; align-items: center;
+  padding: 0 24px;
+  gap: 16px;
+}
+.logo { display: flex; align-items: center; gap: 9px; }
+.logo-icon {
+  width: 30px; height: 30px; border-radius: 8px;
+  background: var(--accent); display: flex; align-items: center; justify-content: center;
+  font-size: 15px; box-shadow: 0 2px 8px rgba(0,122,255,0.28);
+}
+.logo-name { font-size: 17px; font-weight: 700; letter-spacing: -0.4px; }
+.logo-name span { color: var(--accent); }
+.ticker-wrap {
+  flex: 1; overflow: hidden; height: 56px;
+  display: flex; align-items: center;
+  min-width: 0;
+}
+.ticker-track {
+  display: flex; white-space: nowrap;
+  animation: ticker 40s linear infinite;
+}
+.ticker-wrap:hover .ticker-track { animation-play-state: paused; }
+@keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.tick {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 18px; border-right: 1px solid var(--border);
+  font-size: 12.5px;
+}
+.tick-q { color: var(--text2); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.tick-yes { color: var(--green); font-weight: 600; }
+.tick-no { color: var(--red); font-weight: 600; }
+.balance-chip {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; padding: 5px 13px;
+  font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; gap: 6px;
+  box-shadow: var(--shadow); flex-shrink: 0;
+  cursor: default; white-space: nowrap;
+}
+.balance-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green); box-shadow: 0 0 5px var(--green);
+  animation: blink 2s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* ── LAYOUT ── */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 300px;
+  grid-template-rows: auto 1fr;
+  gap: 16px;
+  padding: 20px 20px 32px;
+  max-width: 1200px;
+  margin: 0 auto;
+  min-height: calc(100vh - 56px);
+  box-sizing: border-box;
+}
+/* Left: full height */
+.col-left {
+  grid-row: 1 / 3;
+  min-width: 0;
+}
+/* Right top */
+.col-right-top { min-width: 0; overflow: hidden; }
+/* Right bottom */
+.col-right-bottom { align-self: start; min-width: 0; overflow: hidden; }
+
+/* ── SECTION HEADER ── */
+.sec-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.sec-title { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+.chip-btn {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px 11px;
+  font-size: 12.5px; font-weight: 500; color: var(--accent);
+  cursor: pointer; transition: all 0.15s;
+  box-shadow: var(--shadow);
+  display: flex; align-items: center; gap: 5px;
+}
+.chip-btn:active { transform: scale(0.96); }
+.spin { animation: rot 0.7s linear infinite; }
+@keyframes rot { to { transform: rotate(360deg); } }
+
+/* ── FILTER PILLS ── */
+.pills { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 14px; }
+.pill {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; padding: 5px 14px;
+  font-size: 13px; font-weight: 500; color: var(--text2);
+  cursor: pointer; transition: all 0.18s;
+  box-shadow: var(--shadow);
+}
+.pill.on { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 2px 10px rgba(0,122,255,0.28); }
+
+/* ── MARKET CARD ── */
+.mcard {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); box-shadow: var(--shadow);
+  margin-bottom: 10px; cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  overflow: hidden;
+}
+.mcard:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.mcard:active { transform: scale(0.99); }
+.mcard-body { padding: 14px 16px 10px; }
+.mcard-top { display: flex; gap: 11px; }
+.mcard-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: var(--bg); display: flex; align-items: center; justify-content: center;
+  font-size: 20px; flex-shrink: 0;
+}
+.mcard-info { flex: 1; min-width: 0; }
+.mcard-en {
+  font-size: 14.5px; font-weight: 600; line-height: 1.35;
+  color: var(--text); margin-bottom: 3px;
+}
+.mcard-zh {
+  font-size: 13px; color: var(--text2); line-height: 1.4;
+  font-family: var(--font-zh); margin-bottom: 6px;
+  min-height: 18px;
+}
+.mcard-zh.loading { color: var(--text3); font-style: italic; }
+.mcard-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tag {
+  font-size: 11px; font-weight: 600;
+  padding: 2px 7px; border-radius: 5px;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.tag-politics { background:rgba(175,82,222,0.1); color:var(--purple); }
+.tag-crypto   { background:rgba(255,159,10,0.1); color:var(--yellow); }
+.tag-sports   { background:rgba(52,199,89,0.1);  color:var(--green); }
+.tag-science  { background:rgba(90,200,250,0.1); color:#0080b3; }
+.tag-default  { background:var(--accent-bg);     color:var(--accent); }
+.mcard-vol { font-size: 12px; color: var(--text3); }
+
+/* Prob bar */
+.prob { margin-top: 10px; }
+.prob-nums { display: flex; justify-content: space-between; margin-bottom: 5px; }
+.prob-yes { font-size: 13px; font-weight: 700; color: var(--green); }
+.prob-no  { font-size: 13px; font-weight: 700; color: var(--red); }
+.bar { height: 5px; border-radius: 3px; background: var(--red-bg); overflow: hidden; }
+.bar-fill { height: 100%; background: linear-gradient(90deg, var(--green), #30d158); border-radius: 3px; transition: width 0.5s ease; }
+
+/* Card footer */
+.mcard-foot {
+  padding: 9px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.mcard-date { font-size: 12px; color: var(--text3); }
+.bet-btns { display: flex; gap: 6px; }
+.bbtn {
+  padding: 4px 13px; border-radius: 7px;
+  font-size: 12.5px; font-weight: 700;
+  border: none; cursor: pointer; transition: all 0.15s;
+  font-family: var(--font);
+}
+.bbtn-yes { background: var(--green-bg); color: var(--green); }
+.bbtn-yes:active { background: var(--green); color: #fff; }
+.bbtn-no  { background: var(--red-bg);   color: var(--red); }
+.bbtn-no:active  { background: var(--red);   color: #fff; }
+
+/* ── STATS PANEL ── */
+.stats-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); box-shadow: var(--shadow);
+  padding: 16px 16px;
+  margin-bottom: 14px;
+  box-sizing: border-box; width: 100%; overflow: hidden;
+}
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; min-width: 0; }
+.stat {
+  background: var(--bg); border-radius: var(--r-sm);
+  padding: 12px 14px;
+}
+.stat-l { font-size: 11.5px; color: var(--text2); font-weight: 500; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 5px; }
+.stat-v { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-s { font-size: 11px; color: var(--text3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.up { color: var(--green); }
+.dn { color: var(--red); }
+
+/* ── PORTFOLIO PANEL ── */
+.port-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); box-shadow: var(--shadow);
+  padding: 16px 16px;
+  box-sizing: border-box; width: 100%; overflow: hidden;
+}
+.pos-card {
+  background: var(--bg); border-radius: var(--r-sm);
+  padding: 11px 13px; margin-bottom: 8px;
+}
+.pos-card:last-child { margin-bottom: 0; }
+.pos-en { font-size: 13px; font-weight: 600; margin-bottom: 2px; line-height: 1.35; }
+.pos-zh { font-size: 12px; color: var(--text2); font-family: var(--font-zh); margin-bottom: 7px; }
+.pos-row { display: flex; justify-content: space-between; align-items: center; }
+.pos-badge {
+  font-size: 11.5px; font-weight: 700;
+  padding: 2px 8px; border-radius: 5px;
+}
+.badge-yes { background: var(--green-bg); color: var(--green); }
+.badge-no  { background: var(--red-bg);   color: var(--red); }
+.pos-nums { display: flex; gap: 10px; }
+.pos-n { font-size: 12px; color: var(--text2); }
+.pos-n strong { color: var(--text); font-weight: 600; }
+.sell-btn {
+  background: var(--red-bg); color: var(--red);
+  border: none; border-radius: 6px;
+  padding: 3px 10px; font-size: 12px; font-weight: 700;
+  cursor: pointer; font-family: var(--font);
+  transition: all 0.15s; flex-shrink: 0;
+}
+.sell-btn:active { background: var(--red); color: #fff; }
+
+.empty { text-align: center; padding: 30px 0; color: var(--text3); font-size: 14px; }
+.empty-ico { font-size: 32px; margin-bottom: 8px; }
+
+/* ── MODAL ── */
+.overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.3); backdrop-filter: blur(8px);
+  display: flex; align-items: flex-end; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.22s;
+}
+.overlay.open { opacity: 1; pointer-events: all; }
+.modal {
+  background: var(--surface); border-radius: 26px 26px 0 0;
+  width: 100%; max-width: 560px;
+  max-height: 88vh; overflow-y: auto;
+  padding: 6px 0 0;
+  transform: translateY(100%);
+  transition: transform 0.32s cubic-bezier(0.34, 1.1, 0.64, 1);
+  box-shadow: 0 -4px 32px rgba(0,0,0,0.12);
+}
+.overlay.open .modal { transform: translateY(0); }
+.modal-handle { width: 34px; height: 4px; background: var(--border-strong); border-radius: 2px; margin: 0 auto 18px; }
+.modal-body { padding: 0 20px 36px; }
+.modal-en { font-size: 18px; font-weight: 700; line-height: 1.35; margin-bottom: 4px; letter-spacing: -0.3px; }
+.modal-zh { font-size: 14px; color: var(--text2); font-family: var(--font-zh); margin-bottom: 18px; line-height: 1.5; }
+
+.m-prob { margin-bottom: 20px; }
+.m-prob-nums { display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; margin-bottom: 7px; }
+.m-bar { height: 8px; border-radius: 4px; background: var(--red-bg); overflow: hidden; }
+.m-bar-fill { height: 100%; background: linear-gradient(90deg, var(--green), #30d158); border-radius: 4px; transition: width 0.4s ease; }
+
+.bet-box { background: var(--bg); border-radius: var(--r); padding: 16px; margin-bottom: 14px; }
+.bet-label { font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+.choice-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 13px; }
+.cbtn {
+  padding: 12px; border-radius: 10px; border: 2px solid var(--border);
+  background: var(--surface); cursor: pointer; text-align: center;
+  font-size: 15px; font-weight: 700; transition: all 0.18s;
+}
+.cbtn-yes { color: var(--green); }
+.cbtn-no  { color: var(--red); }
+.cbtn.sel-yes { background: var(--green); border-color: var(--green); color: #fff; box-shadow: 0 3px 12px rgba(52,199,89,0.3); }
+.cbtn.sel-no  { background: var(--red);   border-color: var(--red);   color: #fff; box-shadow: 0 3px 12px rgba(255,59,48,0.3); }
+.amt-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.amt-label { font-size: 14px; color: var(--text2); white-space: nowrap; }
+.amt-in {
+  flex: 1; border: 1.5px solid var(--border); border-radius: 9px;
+  background: var(--surface); padding: 9px 12px;
+  font-size: 16px; font-weight: 600; font-family: var(--font);
+  color: var(--text); outline: none; transition: border-color 0.18s;
+}
+.amt-in:focus { border-color: var(--accent); }
+.quick-row { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 14px; }
+.qbtn {
+  background: var(--surface); border: 1.5px solid var(--border);
+  border-radius: 7px; padding: 5px 11px;
+  font-size: 13px; font-weight: 600; color: var(--text2);
+  cursor: pointer; transition: all 0.15s;
+}
+.qbtn:active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.payout-rows { border-top: 1px solid var(--border); padding-top: 10px; }
+.prow { display: flex; justify-content: space-between; font-size: 13.5px; padding: 5px 0; }
+.prow-l { color: var(--text2); }
+.prow-v { font-weight: 700; }
+.sub-btn {
+  width: 100%; padding: 14px; border-radius: 10px; border: none;
+  background: var(--accent); color: #fff;
+  font-size: 15px; font-weight: 700; font-family: var(--font);
+  cursor: pointer; transition: all 0.18s;
+  box-shadow: 0 3px 12px rgba(0,122,255,0.3);
+  margin-top: 4px;
+}
+.sub-btn:active { transform: scale(0.98); }
+.sub-btn:disabled { background: var(--text3); box-shadow: none; cursor: not-allowed; }
+
+/* ── TOAST ── */
+.toast {
+  position: fixed; top: 70px; left: 50%;
+  transform: translateX(-50%) translateY(-12px);
+  background: var(--text); color: #fff;
+  padding: 10px 18px; border-radius: 12px;
+  font-size: 13.5px; font-weight: 500;
+  opacity: 0; z-index: 300; pointer-events: none;
+  transition: all 0.28s cubic-bezier(0.34,1.4,0.64,1);
+  white-space: nowrap; box-shadow: var(--shadow-md);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── LOADING / EMPTY ── */
+.loader { text-align: center; padding: 60px 0; color: var(--text2); }
+.spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: rot 0.75s linear infinite; margin: 0 auto 14px; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr; }
+  .col-left { grid-row: auto; }
+  .topbar { padding: 0 14px; }
+  .ticker-wrap { display: none; }
+  .layout { padding: 14px 12px 28px; gap: 14px; }
+}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-icon">📊</div>
+    <div class="logo-name">Poly<span>market</span></div>
+  </div>
+  <div class="ticker-wrap"><div class="ticker-track" id="tickerTrack"></div></div>
+  <div class="balance-chip">
+    <div class="balance-dot"></div>
+    <span id="balDisp">$1,000.00</span>
+  </div>
+</div>
+
+<!-- LAYOUT -->
+<div class="layout">
+
+  <!-- ═══ LEFT: MARKETS ═══ -->
+  <div class="col-left">
+    <div class="sec-head">
+      <div class="sec-title">🌐 预测市场</div>
+      <button class="chip-btn" id="refreshBtn" onclick="loadMarkets()">
+        <svg id="refreshIco" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+        刷新
+      </button>
+    </div>
+    <div class="pills" id="pills">
+      <div class="pill on"  onclick="setFilter(this,'all')">全部</div>
+      <div class="pill" onclick="setFilter(this,'politics')">🏛 政治</div>
+      <div class="pill" onclick="setFilter(this,'crypto')">₿ 加密</div>
+      <div class="pill" onclick="setFilter(this,'sports')">⚽ 体育</div>
+      <div class="pill" onclick="setFilter(this,'science')">🔬 科技</div>
+    </div>
+    <div id="mList"><div class="loader"><div class="spinner"></div>加载中…</div></div>
+  </div>
+
+  <!-- ═══ RIGHT TOP: STATS ═══ -->
+  <div class="col-right-top">
+    <div class="stats-panel">
+      <div class="sec-head" style="margin-bottom:0">
+        <div class="sec-title">📈 今日数据</div>
+        <span style="font-size:11px;color:var(--text3)" id="lastUpdated">—</span>
+      </div>
+      <div class="stats-grid">
+        <div class="stat">
+          <div class="stat-l">24h 成交量</div>
+          <div class="stat-v" id="sVol">—</div>
+          <div class="stat-s">USDC</div>
+        </div>
+        <div class="stat">
+          <div class="stat-l">活跃市场</div>
+          <div class="stat-v" id="sMkts">—</div>
+          <div class="stat-s">个</div>
+        </div>
+        <div class="stat">
+          <div class="stat-l">最热 YES 率</div>
+          <div class="stat-v up" id="sTopYes">—</div>
+          <div class="stat-s" id="sTopName" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+        </div>
+        <div class="stat">
+          <div class="stat-l">我的余额</div>
+          <div class="stat-v" id="sBal">—</div>
+          <div class="stat-s">模拟 USDC</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ RIGHT BOTTOM: PORTFOLIO ═══ -->
+    <div class="port-panel">
+      <div class="sec-head">
+        <div class="sec-title">💼 我的持仓</div>
+        <button class="chip-btn" style="color:var(--red)" onclick="doReset()">重置</button>
+      </div>
+      <div id="portList"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- MODAL -->
+<div class="overlay" id="overlay" onclick="tryClose(event)">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-body">
+      <div class="modal-en" id="mEn"></div>
+      <div class="modal-zh" id="mZh"></div>
+      <div class="m-prob">
+        <div class="m-prob-nums">
+          <span style="color:var(--green)" id="mYesLbl">YES —</span>
+          <span style="color:var(--red)"   id="mNoLbl">NO —</span>
+        </div>
+        <div class="m-bar"><div class="m-bar-fill" id="mBarFill"></div></div>
+      </div>
+      <div class="bet-box">
+        <div class="bet-label">💰 下注</div>
+        <div class="choice-row">
+          <div class="cbtn cbtn-yes" id="cYes" onclick="pick('YES')">✅ YES</div>
+          <div class="cbtn cbtn-no"  id="cNo"  onclick="pick('NO')">❌ NO</div>
+        </div>
+        <div class="amt-row">
+          <span class="amt-label">金额 $</span>
+          <input class="amt-in" type="number" id="amtIn" value="10" min="1" oninput="calcPay()" />
+        </div>
+        <div class="quick-row">
+          <div class="qbtn" onclick="setAmt(10)">$10</div>
+          <div class="qbtn" onclick="setAmt(25)">$25</div>
+          <div class="qbtn" onclick="setAmt(50)">$50</div>
+          <div class="qbtn" onclick="setAmt(100)">$100</div>
+        </div>
+        <div class="payout-rows">
+          <div class="prow"><span class="prow-l">预计回报</span><span class="prow-v" id="payOut">—</span></div>
+          <div class="prow"><span class="prow-l">潜在收益</span><span class="prow-v up"  id="profOut">—</span></div>
+        </div>
+        <button class="sub-btn" onclick="placeBet()">确认下注</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── STATE ──
+let mkts = [], filtered = [], curFilter = 'all';
+let selMkt = null, selChoice = null;
+let bal = +localStorage.getItem('pb_bal') || 1000;
+let pos = JSON.parse(localStorage.getItem('pb_pos') || '[]');
+const zhCache = {};
+
+// ── UTILS ──
+const save = () => {
+  localStorage.setItem('pb_bal', bal.toFixed(2));
+  localStorage.setItem('pb_pos', JSON.stringify(pos));
+};
+const fUSD = n => '$' + n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fVol = n => n>=1e6 ? '$'+(n/1e6).toFixed(1)+'M' : n>=1e3 ? '$'+(n/1e3).toFixed(0)+'K' : '$'+n.toFixed(0);
+const cat = t => {
+  const s = t.toLowerCase();
+  if(/trump|biden|president|congress|election|senate|vote|minister|prime|war|ukraine|russia|iran|netanyahu/.test(s)) return 'politics';
+  if(/bitcoin|btc|eth|crypto|coin|defi|token|nft|web3|usd|price/.test(s)) return 'crypto';
+  if(/nba|nfl|soccer|football|champion|sport|cup|league|tennis|golf/.test(s)) return 'sports';
+  if(/ai|gpt|openai|climate|science|tech|nasa|space|model|llm/.test(s)) return 'science';
+  return 'default';
+};
+const catIcon = c => ({politics:'🗳',crypto:'🪙',sports:'🏆',science:'🧬',default:'📌'})[c]||'📌';
+const catLabel = c => ({politics:'🏛 政治',crypto:'₿ 加密',sports:'⚽ 体育',science:'🔬 科技',default:'📌 其他'})[c]||'📌 其他';
+const catCls  = c => ({politics:'tag-politics',crypto:'tag-crypto',sports:'tag-sports',science:'tag-science',default:'tag-default'})[c]||'tag-default';
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2300);
+}
+
+// ── TRANSLATE ──
+async function translate(text) {
+  if (zhCache[text]) return zhCache[text];
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-CN&dt=t&q=${encodeURIComponent(text)}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    const result = d[0].map(x => x[0]).join('');
+    zhCache[text] = result;
+    return result;
+  } catch { return ''; }
+}
+
+// ── LOAD ──
+async function loadMarkets() {
+  const ico = document.getElementById('refreshIco');
+  ico.classList.add('spin');
+  document.getElementById('mList').innerHTML = '<div class="loader"><div class="spinner"></div>加载中…</div>';
+  try {
+    const r = await fetch('/api/markets');
+    const data = await r.json();
+    mkts = data.filter(m => m.question && m.outcomePrices).map(m => {
+      let prices = [];
+      try { prices = JSON.parse(m.outcomePrices); } catch {}
+      const yes = parseFloat(prices[0] ?? '0.5');
+      return {
+        id: m.id, question: m.question,
+        desc: m.description || '',
+        yes, no: 1 - yes,
+        vol: parseFloat(m.volume24hr ?? m.volume ?? '0'),
+        end: m.endDate ?? '',
+        cat: cat(m.question)
+      };
+    });
+    applyFilter();
+    updateStats();
+    buildTicker();
+    // lazy translate
+    lazyTranslate();
+    document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) + ' 更新';
+  } catch(e) {
+    document.getElementById('mList').innerHTML = `<div class="loader">⚠️ 加载失败，请稍后重试</div>`;
+  }
+  ico.classList.remove('spin');
+}
+
+// Translate all visible cards lazily
+async function lazyTranslate() {
+  for (const m of mkts) {
+    const zhEl = document.getElementById('zh_' + m.id);
+    if (!zhEl || zhEl.dataset.done) continue;
+    const zh = await translate(m.question);
+    if (zh && zh !== m.question) {
+      zhEl.textContent = zh;
+      zhEl.classList.remove('loading');
+      zhEl.dataset.done = '1';
+      zhCache[m.id] = zh;
+    }
+  }
+}
+
+// ── STATS ──
+function updateStats() {
+  const vol = mkts.reduce((s,m) => s + m.vol, 0);
+  document.getElementById('sVol').textContent = fVol(vol);
+  document.getElementById('sMkts').textContent = mkts.length;
+  const top = [...mkts].sort((a,b) => b.vol - a.vol)[0];
+  if (top) {
+    document.getElementById('sTopYes').textContent = Math.round(top.yes*100)+'%';
+    document.getElementById('sTopName').textContent = top.question.slice(0,28)+'…';
+  }
+  document.getElementById('sBal').textContent = fUSD(bal);
+}
+
+// ── TICKER ──
+function buildTicker() {
+  const items = mkts.slice(0,12).map(m => `
+    <div class="tick">
+      <span class="tick-q">${m.question.slice(0,45)}…</span>
+      <span class="tick-yes">YES ${Math.round(m.yes*100)}%</span>
+      <span class="tick-no">NO ${Math.round(m.no*100)}%</span>
+    </div>`).join('');
+  document.getElementById('tickerTrack').innerHTML = items + items;
+}
+
+// ── FILTER ──
+function setFilter(el, f) {
+  curFilter = f;
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('on'));
+  el.classList.add('on');
+  applyFilter();
+}
+function applyFilter() {
+  filtered = curFilter === 'all' ? mkts : mkts.filter(m => m.cat === curFilter);
+  render();
+}
+
+// ── RENDER ──
+function render() {
+  const list = document.getElementById('mList');
+  if (!filtered.length) {
+    list.innerHTML = '<div class="loader">暂无市场</div>'; return;
+  }
+  list.innerHTML = filtered.map(m => {
+    const yp = Math.round(m.yes*100);
+    const end = m.end ? new Date(m.end).toLocaleDateString('zh-CN',{year:'numeric',month:'short',day:'numeric'}) : '—';
+    const zhText = zhCache[m.id] || '';
+    return `
+    <div class="mcard" onclick="openModal('${m.id}')">
+      <div class="mcard-body">
+        <div class="mcard-top">
+          <div class="mcard-icon">${catIcon(m.cat)}</div>
+          <div class="mcard-info">
+            <div class="mcard-en">${m.question}</div>
+            <div class="mcard-zh ${zhText?'':'loading'}" id="zh_${m.id}">${zhText||'翻译中…'}</div>
+            <div class="mcard-tags">
+              <span class="tag ${catCls(m.cat)}">${catLabel(m.cat)}</span>
+              <span class="mcard-vol">${fVol(m.vol)} 成交</span>
+            </div>
+          </div>
+        </div>
+        <div class="prob">
+          <div class="prob-nums">
+            <span class="prob-yes">✅ YES ${yp}%</span>
+            <span class="prob-no">❌ NO ${100-yp}%</span>
+          </div>
+          <div class="bar"><div class="bar-fill" style="width:${yp}%"></div></div>
+        </div>
+      </div>
+      <div class="mcard-foot">
+        <span class="mcard-date">🗓 截止 ${end}</span>
+        <div class="bet-btns">
+          <button class="bbtn bbtn-yes" onclick="event.stopPropagation();openModal('${m.id}','YES')">YES</button>
+          <button class="bbtn bbtn-no"  onclick="event.stopPropagation();openModal('${m.id}','NO')">NO</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  // re-translate any not yet done
+  setTimeout(lazyTranslate, 100);
+}
+
+// ── PORTFOLIO ──
+function renderPort() {
+  const el = document.getElementById('portList');
+  if (!pos.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-ico">💼</div>暂无持仓<br><span style="font-size:12px">去左边下注吧</span></div>';
+    return;
+  }
+  el.innerHTML = pos.slice().reverse().map((p, ri) => {
+    const realIdx = pos.length - 1 - ri;
+    const zh = zhCache[p.id] || '';
+    // current prob for this choice
+    const mkt = mkts.find(m => m.id === p.id);
+    const curProb = mkt ? (p.choice==='YES' ? mkt.yes : mkt.no) : p.prob;
+    const curVal = p.amt / p.prob * curProb; // current market value
+    const pnl = curVal - p.amt;
+    const pnlSign = pnl >= 0 ? '+' : '';
+    return `
+    <div class="pos-card">
+      <div class="pos-en">${p.question.slice(0,60)}${p.question.length>60?'…':''}</div>
+      ${zh ? `<div class="pos-zh">${zh}</div>` : ''}
+      <div class="pos-row">
+        <span class="pos-badge ${p.choice==='YES'?'badge-yes':'badge-no'}">${p.choice}</span>
+        <div class="pos-nums">
+          <span class="pos-n">成本 <strong>${fUSD(p.amt)}</strong></span>
+          <span class="pos-n ${pnl>=0?'up':'dn'}">盈亏 <strong>${pnlSign}${fUSD(pnl)}</strong></span>
+        </div>
+        <button class="sell-btn" onclick="sellPos(${realIdx})">卖出</button>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('sBal').textContent = fUSD(bal);
+}
+
+function sellPos(idx) {
+  const p = pos[idx];
+  if (!p) return;
+  const mkt = mkts.find(m => m.id === p.id);
+  const curProb = mkt ? (p.choice==='YES' ? mkt.yes : mkt.no) : p.prob;
+  const curVal = +(p.amt / p.prob * curProb).toFixed(2);
+  bal += curVal;
+  pos.splice(idx, 1);
+  save(); renderPort(); updateStats();
+  toast(`💰 已卖出，回收 ${fUSD(curVal)}`);
+}
+
+function doReset() {
+  if (!confirm('确定重置？余额和持仓都会清空。')) return;
+  bal = 1000; pos = []; save(); renderPort(); updateStats();
+  toast('🔄 已重置账户');
+}
+
+// ── MODAL ──
+function openModal(id, choice=null) {
+  selMkt = mkts.find(m => m.id===id); if (!selMkt) return;
+  selChoice = null;
+  document.getElementById('mEn').textContent = selMkt.question;
+  const zh = zhCache[selMkt.id] || '';
+  document.getElementById('mZh').textContent = zh || '翻译中…';
+  if (!zh) translate(selMkt.question).then(t => { document.getElementById('mZh').textContent = t||selMkt.question; });
+  const yp = Math.round(selMkt.yes*100);
+  document.getElementById('mYesLbl').textContent = `YES ${yp}%`;
+  document.getElementById('mNoLbl').textContent  = `NO ${100-yp}%`;
+  document.getElementById('mBarFill').style.width = yp+'%';
+  document.getElementById('cYes').className = 'cbtn cbtn-yes';
+  document.getElementById('cNo').className  = 'cbtn cbtn-no';
+  document.getElementById('amtIn').value = 10;
+  document.getElementById('payOut').textContent  = '—';
+  document.getElementById('profOut').textContent = '—';
+  document.getElementById('overlay').classList.add('open');
+  if (choice) setTimeout(() => pick(choice), 120);
+}
+function tryClose(e) {
+  if (e.target === document.getElementById('overlay'))
+    document.getElementById('overlay').classList.remove('open');
+}
+function pick(c) {
+  selChoice = c;
+  document.getElementById('cYes').className = 'cbtn cbtn-yes' + (c==='YES'?' sel-yes':'');
+  document.getElementById('cNo').className  = 'cbtn cbtn-no'  + (c==='NO' ?' sel-no':'');
+  calcPay();
+}
+function setAmt(n) { document.getElementById('amtIn').value = n; calcPay(); }
+function calcPay() {
+  if (!selChoice || !selMkt) return;
+  const amt = parseFloat(document.getElementById('amtIn').value)||0;
+  const prob = selChoice==='YES' ? selMkt.yes : selMkt.no;
+  if (!prob) return;
+  const pay = amt/prob;
+  document.getElementById('payOut').textContent  = fUSD(pay);
+  document.getElementById('profOut').textContent = '+'+fUSD(pay-amt);
+}
+function placeBet() {
+  if (!selChoice) { toast('请先选择 YES 或 NO'); return; }
+  const amt = parseFloat(document.getElementById('amtIn').value)||0;
+  if (amt<=0) { toast('请输入有效金额'); return; }
+  if (amt>bal) { toast('余额不足 💸'); return; }
+  const prob = selChoice==='YES' ? selMkt.yes : selMkt.no;
+  const pay = amt/prob;
+  bal -= amt;
+  pos.push({ id: selMkt.id, question: selMkt.question, choice: selChoice, amt, pay, prob, ts: Date.now() });
+  zhCache[selMkt.id] = zhCache[selMkt.id] || '';
+  save(); renderPort(); updateStats();
+  document.getElementById('overlay').classList.remove('open');
+  toast(`✅ 已下注 ${fUSD(amt)} on ${selChoice}`);
+}
+
+// ── BALANCE DISPLAY ──
+function updBal() { document.getElementById('balDisp').textContent = fUSD(bal); }
+
+// ── INIT ──
+updBal();
+renderPort();
+loadMarkets();
+setInterval(loadMarkets, 60000);
+</script>
+</body>
+</html>
