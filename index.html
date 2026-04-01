@@ -182,7 +182,12 @@ body { background: var(--bg); font-family: var(--font); color: var(--text); min-
 .tag-crypto   { background:rgba(255,159,10,0.1); color:var(--yellow); }
 .tag-sports   { background:rgba(52,199,89,0.1);  color:var(--green); }
 .tag-science  { background:rgba(90,200,250,0.1); color:#0080b3; }
-.tag-default  { background:var(--accent-bg);     color:var(--accent); }
+.tag-default      { background:var(--accent-bg);     color:var(--accent); }
+.tag-geo         { background:rgba(255,69,58,0.1);  color:#ff453a; }
+.tag-economy     { background:rgba(255,159,10,0.12);color:var(--yellow); }
+.tag-esports     { background:rgba(52,199,89,0.08); color:#248a3d; }
+.tag-tech        { background:rgba(90,200,250,0.12);color:#0071a8; }
+.tag-entertainment{ background:rgba(175,82,222,0.1);color:var(--purple); }
 .mcard-vol { font-size: 12px; color: var(--text3); }
 
 /* Prob bar */
@@ -402,10 +407,15 @@ body { background: var(--bg); font-family: var(--font); color: var(--text); min-
     </div>
     <div class="pills" id="pills">
       <div class="pill on"  onclick="setFilter(this,'all')">全部</div>
-      <div class="pill" onclick="setFilter(this,'politics')">🏛 政治</div>
+      <div class="pill" onclick="setFilter(this,'politics')">🗳 政治</div>
+      <div class="pill" onclick="setFilter(this,'geopolitics')">🌍 地缘</div>
       <div class="pill" onclick="setFilter(this,'crypto')">₿ 加密</div>
-      <div class="pill" onclick="setFilter(this,'sports')">⚽ 体育</div>
-      <div class="pill" onclick="setFilter(this,'science')">🔬 科技</div>
+      <div class="pill" onclick="setFilter(this,'economy')">📉 经济</div>
+      <div class="pill" onclick="setFilter(this,'sports')">🏆 体育</div>
+      <div class="pill" onclick="setFilter(this,'esports')">🎮 电竞</div>
+      <div class="pill" onclick="setFilter(this,'tech')">💻 科技</div>
+      <div class="pill" onclick="setFilter(this,'science')">🔬 科学</div>
+      <div class="pill" onclick="setFilter(this,'entertainment')">🎬 娱乐</div>
     </div>
     <div id="mList"><div class="loader"><div class="spinner"></div>加载中…</div></div>
   </div>
@@ -512,15 +522,32 @@ const fUSD = n => '$' + n.toLocaleString('en-US',{minimumFractionDigits:2,maximu
 const fVol = n => n>=1e6 ? '$'+(n/1e6).toFixed(1)+'M' : n>=1e3 ? '$'+(n/1e3).toFixed(0)+'K' : '$'+n.toFixed(0);
 const cat = t => {
   const s = t.toLowerCase();
-  if(/trump|biden|president|congress|election|senate|vote|minister|prime|war|ukraine|russia|iran|netanyahu/.test(s)) return 'politics';
-  if(/bitcoin|btc|eth|crypto|coin|defi|token|nft|web3|usd|price/.test(s)) return 'crypto';
-  if(/nba|nfl|soccer|football|champion|sport|cup|league|tennis|golf/.test(s)) return 'sports';
-  if(/ai|gpt|openai|climate|science|tech|nasa|space|model|llm/.test(s)) return 'science';
-  return 'default';
+  if(/trump|biden|president|congress|election|senate|vote|minister|prime minister|netanyahu|zelensky|modi|macron|putin|xi jinping/.test(s)) return 'politics';
+  if(/war|ukraine|russia|iran|israel|military|ceasefire|nato|sanction|nuclear/.test(s)) return 'geopolitics';
+  if(/bitcoin|btc|eth|ethereum|crypto|coin|defi|token|nft|web3|solana|doge|altcoin/.test(s)) return 'crypto';
+  if(/price|fed|rate|gdp|inflation|recession|market|stock|sp500|nasdaq|tariff|trade/.test(s)) return 'economy';
+  if(/nba|nfl|mlb|nhl|soccer|football|champion|sport|cup|league|tennis|golf|f1|formula|olympics|ufc|boxing/.test(s)) return 'sports';
+  if(/esport|lol|dota|csgo|valorant|game winner|series/.test(s)) return 'esports';
+  if(/ai|gpt|openai|claude|gemini|llm|model|tech|apple|google|microsoft|meta|nvidia/.test(s)) return 'tech';
+  if(/climate|nasa|space|science|bio|pharma|drug|fda|health|covid|disease/.test(s)) return 'science';
+  if(/oscar|grammy|emmy|movie|film|music|celebrity|award|entertainment/.test(s)) return 'entertainment';
+  return 'other';
 };
-const catIcon = c => ({politics:'🗳',crypto:'🪙',sports:'🏆',science:'🧬',default:'📌'})[c]||'📌';
-const catLabel = c => ({politics:'🏛 政治',crypto:'₿ 加密',sports:'⚽ 体育',science:'🔬 科技',default:'📌 其他'})[c]||'📌 其他';
-const catCls  = c => ({politics:'tag-politics',crypto:'tag-crypto',sports:'tag-sports',science:'tag-science',default:'tag-default'})[c]||'tag-default';
+const catIcon = c => ({
+  politics:'🗳', geopolitics:'🌍', crypto:'🪙', economy:'📉',
+  sports:'🏆', esports:'🎮', tech:'💻', science:'🔬',
+  entertainment:'🎬', other:'📌'
+})[c]||'📌';
+const catLabel = c => ({
+  politics:'🗳 政治', geopolitics:'🌍 地缘', crypto:'₿ 加密', economy:'📉 经济',
+  sports:'🏆 体育', esports:'🎮 电竞', tech:'💻 科技', science:'🔬 科学',
+  entertainment:'🎬 娱乐', other:'📌 其他'
+})[c]||'📌 其他';
+const catCls = c => ({
+  politics:'tag-politics', geopolitics:'tag-geo', crypto:'tag-crypto', economy:'tag-economy',
+  sports:'tag-sports', esports:'tag-esports', tech:'tag-tech', science:'tag-science',
+  entertainment:'tag-entertainment', other:'tag-default'
+})[c]||'tag-default';
 
 function toast(msg) {
   const el = document.getElementById('toast');
@@ -542,37 +569,72 @@ async function translate(text) {
 }
 
 // ── LOAD ──
-async function loadMarkets() {
+let page = 0, pageSize = 50, loading = false, hasMore = true;
+
+function parseMkt(m) {
+  let prices = [];
+  try { prices = JSON.parse(m.outcomePrices); } catch {}
+  const yes = parseFloat(prices[0] ?? '0.5');
+  return {
+    id: m.id, question: m.question,
+    desc: m.description || '',
+    yes, no: 1 - yes,
+    vol: parseFloat(m.volume24hr ?? m.volume ?? '0'),
+    end: m.endDate ?? '',
+    cat: cat(m.question)
+  };
+}
+
+async function loadMarkets(reset = true) {
+  if (loading) return;
+  loading = true;
   const ico = document.getElementById('refreshIco');
-  ico.classList.add('spin');
-  document.getElementById('mList').innerHTML = '<div class="loader"><div class="spinner"></div>加载中…</div>';
+  if (reset) {
+    page = 0; hasMore = true; mkts = [];
+    ico.classList.add('spin');
+    document.getElementById('mList').innerHTML = '<div class="loader"><div class="spinner"></div>加载中…</div>';
+  }
   try {
-    const r = await fetch('/api/markets');
+    const offset = page * pageSize;
+    const url = `/api/markets?limit=${pageSize}&active=true&closed=false&order=volume24hr&ascending=false&offset=${offset}`;
+    const r = await fetch(url);
     const data = await r.json();
-    mkts = data.filter(m => m.question && m.outcomePrices).map(m => {
-      let prices = [];
-      try { prices = JSON.parse(m.outcomePrices); } catch {}
-      const yes = parseFloat(prices[0] ?? '0.5');
-      return {
-        id: m.id, question: m.question,
-        desc: m.description || '',
-        yes, no: 1 - yes,
-        vol: parseFloat(m.volume24hr ?? m.volume ?? '0'),
-        end: m.endDate ?? '',
-        cat: cat(m.question)
-      };
-    });
-    applyFilter();
-    updateStats();
-    buildTicker();
-    // lazy translate
+    const batch = data.filter(m => m.question && m.outcomePrices).map(parseMkt);
+    if (batch.length < pageSize) hasMore = false;
+    mkts = reset ? batch : [...mkts, ...batch];
+    page++;
+    if (reset) {
+      applyFilter();
+      updateStats();
+      buildTicker();
+    } else {
+      applyFilter(false); // append mode
+    }
     lazyTranslate();
     document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) + ' 更新';
   } catch(e) {
-    document.getElementById('mList').innerHTML = `<div class="loader">⚠️ 加载失败，请稍后重试</div>`;
+    if (reset) document.getElementById('mList').innerHTML = '<div class="loader">⚠️ 加载失败，请稍后重试</div>';
   }
+  loading = false;
   ico.classList.remove('spin');
+  updateScrollSentinel();
 }
+
+function updateScrollSentinel() {
+  let s = document.getElementById('scrollSentinel');
+  if (!s) { s = document.createElement('div'); s.id = 'scrollSentinel'; s.style.height='10px'; document.getElementById('mList').appendChild(s); }
+  if (!hasMore) { s.textContent = ''; return; }
+  s.innerHTML = '<div class="loader" style="padding:20px 0"><div class="spinner"></div></div>';
+}
+
+// Intersection observer for infinite scroll
+const scrollObserver = new IntersectionObserver(entries => {
+  if (entries[0].isIntersecting && hasMore && !loading) loadMarkets(false);
+}, { rootMargin: '200px' });
+setTimeout(() => {
+  const s = document.getElementById('scrollSentinel');
+  if (s) scrollObserver.observe(s);
+}, 500);
 
 // Translate all visible cards lazily
 async function lazyTranslate() {
@@ -587,6 +649,21 @@ async function lazyTranslate() {
       zhCache[m.id] = zh;
     }
   }
+}
+
+// ── RENDER APPEND (infinite scroll) ──
+function renderAppend() {
+  const list = document.getElementById('mList');
+  const sentinel = document.getElementById('scrollSentinel');
+  const newFiltered = curFilter === 'all' ? mkts : mkts.filter(m => m.cat === curFilter);
+  const newItems = newFiltered.slice(filtered.length);
+  filtered = newFiltered;
+  if (!newItems.length) return;
+  const frag = document.createElement('div');
+  frag.innerHTML = newItems.map(m => renderCard(m)).join('');
+  if (sentinel) list.insertBefore(frag, sentinel);
+  else list.appendChild(frag);
+  setTimeout(lazyTranslate, 100);
 }
 
 // ── STATS ──
@@ -621,55 +698,58 @@ function setFilter(el, f) {
   curFilter = f;
   document.querySelectorAll('.pill').forEach(p => p.classList.remove('on'));
   el.classList.add('on');
-  applyFilter();
+  applyFilter(true);
 }
-function applyFilter() {
+function applyFilter(fullRender = true) {
   filtered = curFilter === 'all' ? mkts : mkts.filter(m => m.cat === curFilter);
-  render();
+  if (fullRender) render();
+  else renderAppend();
 }
 
 // ── RENDER ──
+function renderCard(m) {
+  const yp = Math.round(m.yes*100);
+  const end = m.end ? new Date(m.end).toLocaleDateString('zh-CN',{year:'numeric',month:'short',day:'numeric'}) : '—';
+  const zhText = zhCache[m.id] || '';
+  return `
+  <div class="mcard" onclick="openModal('${m.id}')">
+    <div class="mcard-body">
+      <div class="mcard-top">
+        <div class="mcard-icon">${catIcon(m.cat)}</div>
+        <div class="mcard-info">
+          <div class="mcard-en">${m.question}</div>
+          <div class="mcard-zh ${zhText?'':'loading'}" id="zh_${m.id}">${zhText||'翻译中…'}</div>
+          <div class="mcard-tags">
+            <span class="tag ${catCls(m.cat)}">${catLabel(m.cat)}</span>
+            <span class="mcard-vol">${fVol(m.vol)} 成交</span>
+          </div>
+        </div>
+      </div>
+      <div class="prob">
+        <div class="prob-nums">
+          <span class="prob-yes">✅ YES ${yp}%</span>
+          <span class="prob-no">❌ NO ${100-yp}%</span>
+        </div>
+        <div class="bar"><div class="bar-fill" style="width:${yp}%"></div></div>
+      </div>
+    </div>
+    <div class="mcard-foot">
+      <span class="mcard-date">🗓 截止 ${end}</span>
+      <div class="bet-btns">
+        <button class="bbtn bbtn-yes" onclick="event.stopPropagation();openModal('${m.id}','YES')">YES</button>
+        <button class="bbtn bbtn-no"  onclick="event.stopPropagation();openModal('${m.id}','NO')">NO</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function render() {
   const list = document.getElementById('mList');
   if (!filtered.length) {
     list.innerHTML = '<div class="loader">暂无市场</div>'; return;
   }
-  list.innerHTML = filtered.map(m => {
-    const yp = Math.round(m.yes*100);
-    const end = m.end ? new Date(m.end).toLocaleDateString('zh-CN',{year:'numeric',month:'short',day:'numeric'}) : '—';
-    const zhText = zhCache[m.id] || '';
-    return `
-    <div class="mcard" onclick="openModal('${m.id}')">
-      <div class="mcard-body">
-        <div class="mcard-top">
-          <div class="mcard-icon">${catIcon(m.cat)}</div>
-          <div class="mcard-info">
-            <div class="mcard-en">${m.question}</div>
-            <div class="mcard-zh ${zhText?'':'loading'}" id="zh_${m.id}">${zhText||'翻译中…'}</div>
-            <div class="mcard-tags">
-              <span class="tag ${catCls(m.cat)}">${catLabel(m.cat)}</span>
-              <span class="mcard-vol">${fVol(m.vol)} 成交</span>
-            </div>
-          </div>
-        </div>
-        <div class="prob">
-          <div class="prob-nums">
-            <span class="prob-yes">✅ YES ${yp}%</span>
-            <span class="prob-no">❌ NO ${100-yp}%</span>
-          </div>
-          <div class="bar"><div class="bar-fill" style="width:${yp}%"></div></div>
-        </div>
-      </div>
-      <div class="mcard-foot">
-        <span class="mcard-date">🗓 截止 ${end}</span>
-        <div class="bet-btns">
-          <button class="bbtn bbtn-yes" onclick="event.stopPropagation();openModal('${m.id}','YES')">YES</button>
-          <button class="bbtn bbtn-no"  onclick="event.stopPropagation();openModal('${m.id}','NO')">NO</button>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-  // re-translate any not yet done
+  list.innerHTML = filtered.map(m => renderCard(m)).join('');
+  updateScrollSentinel();
   setTimeout(lazyTranslate, 100);
 }
 
@@ -786,7 +866,8 @@ function updBal() { document.getElementById('balDisp').textContent = fUSD(bal); 
 updBal();
 renderPort();
 loadMarkets();
-setInterval(loadMarkets, 60000);
+// 每5分钟静默刷新第一页
+setInterval(() => loadMarkets(true), 300000);
 </script>
 </body>
 </html>
