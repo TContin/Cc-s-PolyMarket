@@ -510,6 +510,7 @@ body { background: var(--bg); font-family: var(--font); color: var(--text); min-
 
 <script>
 // ── STATE ──
+let simData = { balance: 10000, positions: [], closed: [], totalPnl: 0, logs: [] };
 let mkts = [], filtered = [], curFilter = 'all';
 let selMkt = null, selChoice = null;
 let bal = +localStorage.getItem('pb_bal') || 1000;
@@ -865,8 +866,6 @@ function placeBet() {
 
 
 // ── SERVER SIM STATUS ──
-let simData = { balance: 10000, positions: [], closed: [], totalPnl: 0, logs: [] };
-
 async function loadSimStatus() {
   try {
     const r = await fetch('/sim/status');
