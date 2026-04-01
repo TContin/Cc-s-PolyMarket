@@ -594,10 +594,13 @@ function updateStats() {
   const vol = mkts.reduce((s,m) => s + m.vol, 0);
   document.getElementById('sVol').textContent = fVol(vol);
   document.getElementById('sMkts').textContent = mkts.length;
-  const top = [...mkts].sort((a,b) => b.vol - a.vol)[0];
+  // 最热：按成交量排，且 YES 在 10%~90% 之间（排除已定局市场）
+  const top = [...mkts]
+    .filter(m => m.yes >= 0.10 && m.yes <= 0.90)
+    .sort((a,b) => b.vol - a.vol)[0] || [...mkts].sort((a,b) => b.vol - a.vol)[0];
   if (top) {
     document.getElementById('sTopYes').textContent = Math.round(top.yes*100)+'%';
-    document.getElementById('sTopName').textContent = top.question.slice(0,28)+'…';
+    document.getElementById('sTopName').textContent = top.question.slice(0,26)+'…';
   }
   document.getElementById('sBal').textContent = fUSD(bal);
 }
