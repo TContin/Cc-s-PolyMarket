@@ -759,52 +759,53 @@ function render() {
 // ── PORTFOLIO ──
 function renderPort() {
   const el = document.getElementById('portList');
-  if (!pos.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-ico">💼</div>暂无持仓<br><span style="font-size:12px">去左边下注吧</span></div>';
+  const positions = (simData && simData.positions) ? simData.positions : [];
+  if (!positions.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-ico">🤖</div>机器人扫描中…<br><span style="font-size:12px">每5分钟自动套利</span></div>';
     return;
   }
-  el.innerHTML = pos.slice().reverse().map((p, ri) => {
-    const realIdx = pos.length - 1 - ri;
-    const zh = zhCache[p.id] || '';
-    // current prob for this choice
-    const mkt = mkts.find(m => m.id === p.id);
+  const stratLabel = { time_series:'📐时序', high_conf:'🎯高确YES', high_conf_no:'🔒高确NO' };
+  el.innerHTML = positions.map(p => {
+    const mkt = mkts.find(m => m.id === p.market_id);
     const curProb = mkt ? (p.choice==='YES' ? mkt.yes : mkt.no) : p.prob;
-    const curVal = p.amt / p.prob * curProb; // current market value
-    const pnl = curVal - p.amt;
+    const curVal = p.amount / p.prob * curProb;
+    const pnl = curVal - p.amount;
     const pnlSign = pnl >= 0 ? '+' : '';
+    const zh = zhCache[p.market_id] || '';
+    const strat = stratLabel[p.strategy] || p.strategy;
     return `
     <div class="pos-card">
-      <div class="pos-en">${p.question.slice(0,60)}${p.question.length>60?'…':''}</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px;margin-bottom:3px">
+        <div class="pos-en" style="flex:1">${p.question.slice(0,55)}${p.question.length>55?'…':''}</div>
+        <span style="font-size:10px;color:var(--text3);white-space:nowrap;flex-shrink:0">${strat}</span>
+      </div>
       ${zh ? `<div class="pos-zh">${zh}</div>` : ''}
       <div class="pos-row">
         <span class="pos-badge ${p.choice==='YES'?'badge-yes':'badge-no'}">${p.choice}</span>
         <div class="pos-nums">
-          <span class="pos-n">成本 <strong>${fUSD(p.amt)}</strong></span>
-          <span class="pos-n ${pnl>=0?'up':'dn'}">盈亏 <strong>${pnlSign}${fUSD(pnl)}</strong></span>
+          <span class="pos-n">成本 <strong>${fUSD(p.amount)}</strong></span>
+          <span class="pos-n ${pnl>=0?'up':'dn'}">浮盈 <strong>${pnlSign}${fUSD(pnl)}</strong></span>
         </div>
-        <button class="sell-btn" onclick="sellPos(${realIdx})">卖出</button>
       </div>
     </div>`;
   }).join('');
-  document.getElementById('sBal').textContent = fUSD(simData ? simData.balance : bal);
-}
-
-function sellPos(idx) {
-  const p = pos[idx];
-  if (!p) return;
-  const mkt = mkts.find(m => m.id === p.id);
-  const curProb = mkt ? (p.choice==='YES' ? mkt.yes : mkt.no) : p.prob;
-  const curVal = +(p.amt / p.prob * curProb).toFixed(2);
-  bal += curVal;
-  pos.splice(idx, 1);
-  save(); renderPort(); updateStats();
-  toast(`💰 已卖出，回收 ${fUSD(curVal)}`);
+  if (simData.closed && simData.closed.length) {
+    const pnl = simData.totalPnl || 0;
+    el.innerHTML += `<div style="padding:10px 0;text-align:center;font-size:12px;color:var(--text2);border-top:1px solid var(--border);margin-top:8px">
+      已平仓 ${simData.closed.length} 笔 · 总盈亏 <strong class="${pnl>=0?'up':'dn'}">${pnl>=0?'+':''}${fUSD(pnl)}</strong>
+    </div>`;
+  }
 }
 
 function doReset() {
   if (!confirm('确定重置？余额和持仓都会清空。')) return;
-  bal = 1000; pos = []; save(); renderPort(); updateStats();
-  toast('🔄 已重置账户');
+  fetch('/sim/reset').then(r => r.json()).then(() => {
+    simData = { balance: 10000, positions: [], closed: [], totalPnl: 0 };
+    renderPort();
+    document.getElementById('sBal').textContent = fUSD(10000);
+    document.getElementById('balDisp').textContent = fUSD(10000);
+    toast('🔄 已重置账户');
+  });
 }
 
 // ── MODAL ──
@@ -860,6 +861,29 @@ function placeBet() {
   save(); renderPort(); updateStats();
   document.getElementById('overlay').classList.remove('open');
   toast(`✅ 已下注 ${fUSD(amt)} on ${selChoice}`);
+}
+
+
+// ── SERVER SIM STATUS ──
+let simData = { balance: 10000, positions: [], closed: [], totalPnl: 0, logs: [] };
+
+async function loadSimStatus() {
+  try {
+    const r = await fetch('/sim/status');
+    if (!r.ok) return;
+    simData = await r.json();
+    // 更新顶栏余额
+    document.getElementById('balDisp').textContent = fUSD(simData.balance);
+    document.getElementById('sBal').textContent = fUSD(simData.balance);
+    renderPort();
+  } catch(e) { console.warn('sim status error', e); }
+}
+
+function triggerArb() {
+  fetch('/sim/run').then(() => {
+    toast('🤖 套利扫描中…');
+    setTimeout(loadSimStatus, 4000);
+  }).catch(console.error);
 }
 
 // ── BALANCE DISPLAY ──
