@@ -123,123 +123,38 @@ function parseMkt(m) {
 }
 
 // ── ARBITRAGE STRATEGIES ──
+// 核心原则：只做 ≤3 天内结算的市场，当日或次日见钱
 
 /**
- * 【策略1】时序套利 (Time-Series Arbitrage)
- * 逻辑：同一事件，截止越晚的版本，YES 概率理论上应 >= 截止越早的。
- * 如果 早截止YES > 晚截止YES + threshold，说明晚截止被低估，买入。
- * 有效性：✅ 真实市场定价矛盾，逻辑最硬
+ * 有效市场过滤：只要 1-72 小时内结算的
  */
-// 判断两个问题是否是"同一事件的不同截止版本"
-// 要求：问题高度相似（前40个词的词汇重叠度 > 60%）
-function isSameEvent(q1, q2) {
-  // 1. 截止日期必须不同（同截止日期不存在时序套利）
-  // 这个在调用处已经保证
-  
-  // 2. 提取核心词汇（去掉时间词、冠词）
-  const stopWords = new Set([
-    'will','the','a','an','by','in','on','at','of','to','be','is','are',
-    'was','were','have','has','had','do','does','did','for','with','from',
-    'that','this','they','than','above','below','before','after','until',
-    'january','february','march','april','may','june','july','august',
-    'september','october','november','december','2024','2025','2026','2027','2028'
-  ]);
-  const words1 = new Set(q1.toLowerCase().match(/\w{3,}/g)?.filter(w => !stopWords.has(w)) || []);
-  const words2 = new Set(q2.toLowerCase().match(/\w{3,}/g)?.filter(w => !stopWords.has(w)) || []);
-  
-  if (words1.size === 0 || words2.size === 0) return false;
-  
-  // 交集 / 并集 = Jaccard 相似度
-  const intersection = new Set([...words1].filter(w => words2.has(w)));
-  const union = new Set([...words1, ...words2]);
-  const jaccard = intersection.size / union.size;
-  
-  // 相似度 > 55% 才认为是同一事件
-  return jaccard > 0.55;
-}
-
-function stratTimeSeries(markets) {
-  const opps = [];
-  const keywords = [
-    'iran', 'ukraine', 'russia', 'netanyahu', 'israel',
-    'bitcoin', 'btc', 'ethereum', 'eth',
-    'trump', 'fed rate', 'federal reserve', 'interest rate',
-    'gaza', 'ceasefire', 'nato', 'china', 'taiwan',
-  ];
-
-  for (const kw of keywords) {
-    const group = markets
-      .filter(m =>
-        m.question.toLowerCase().includes(kw) &&
-        m.end &&
-        isValidMarket(m) &&
-        m.vol > 50000 &&
-        m.yes > 0.05 && m.yes < 0.95
-      )
-      .sort((a, b) => a.end.localeCompare(b.end));
-
-    if (group.length < 2) continue;
-
-    for (let i = 0; i < group.length - 1; i++) {
-      for (let j = i + 1; j < group.length; j++) {
-        const early = group[i], late = group[j];
-        
-        // ✅ 核心过滤：截止日期必须不同
-        if (early.end === late.end) continue;
-        
-        // ✅ 核心过滤：两个问题必须是同一事件
-        if (!isSameEvent(early.question, late.question)) continue;
-        
-        const gap = early.yes - late.yes;
-        // 正向：早截止YES > 晚截止YES（晚截止被低估，买YES）
-        if (gap > 0.08 && gap < 0.55) {
-          opps.push({
-            strategy: 'time_series',
-            market: late,
-            choice: 'YES',
-            edge: gap,
-            reason: `时序套利: 早[${early.end}]YES=${(early.yes*100).toFixed(1)}% > 晚[${late.end}]YES=${(late.yes*100).toFixed(1)}%, 价差${(gap*100).toFixed(1)}%, vol=$${(late.vol/1000).toFixed(0)}K`
-          });
-        }
-        // 反向：晚截止YES > 早截止YES（早截止被高估，买NO）
-        const reverseGap = late.yes - early.yes;
-        if (reverseGap > 0.12 && reverseGap < 0.55 && early.no > 0.05) {
-          opps.push({
-            strategy: 'time_series',
-            market: early,
-            choice: 'NO',
-            edge: reverseGap * 0.7,
-            reason: `时序反转: 晚[${late.end}]YES=${(late.yes*100).toFixed(1)}% >> 早[${early.end}]YES=${(early.yes*100).toFixed(1)}%, 早截止高估, vol=$${(early.vol/1000).toFixed(0)}K`
-          });
-        }
-      }
-    }
-  }
-  return opps;
+function isValidMarket(m) {
+  if (!m.end) return false;
+  const hoursLeft = (new Date(m.end) - new Date()) / 3600000;
+  return hoursLeft >= 1 && hoursLeft <= 72; // 1小时到3天
 }
 
 /**
- * 【策略2】Bundle 定价错误 (Bundle Mispricing)
- * 逻辑：同一市场 YES + NO 理论上 = 1（减去手续费约 0.96-0.98）。
- * 如果 YES + NO < 0.95，说明有人在两边都定价过低，存在无风险套利空间。
- * 有效性：✅ 数学上确定，但在高效市场中很快消失
+ * 【策略1】短线 Bundle 缺口
+ * YES + NO < 0.96 且当天/明天结算 → 无风险套利
+ * 体育盘口（NBA/NFL/Soccer）最常出现
  */
-function stratBundle(markets) {
+function stratShortBundle(markets) {
   const opps = [];
   for (const m of markets) {
-    if (!isValidMarket(m) || m.vol < 50000) continue;
+    if (!isValidMarket(m) || m.vol < 20000) continue;
     const sum = m.yes + m.no;
-    if (sum < 0.95 && sum > 0.50) {
+    if (sum < 0.96 && sum > 0.40) {
       const edge = 1 - sum;
-      // 买被更低估的那边
       const choice = m.yes <= m.no ? 'YES' : 'NO';
       const prob = choice === 'YES' ? m.yes : m.no;
+      const hoursLeft = Math.round((new Date(m.end) - new Date()) / 3600000);
       opps.push({
-        strategy: 'bundle',
+        strategy: 'short_bundle',
         market: m,
         choice,
         edge,
-        reason: `Bundle定价缺口: YES(${(m.yes*100).toFixed(1)}%)+NO(${(m.no*100).toFixed(1)}%)=${(sum*100).toFixed(1)}%<100%, 套利空间${(edge*100).toFixed(1)}%, vol=$${(m.vol/1000).toFixed(0)}K`
+        reason: `Bundle缺口: YES(${(m.yes*100).toFixed(1)}%)+NO(${(m.no*100).toFixed(1)}%)=${(sum*100).toFixed(1)}%<100%, 空间${(edge*100).toFixed(1)}%, ${hoursLeft}小时后结算, vol=$${(m.vol/1000).toFixed(0)}K`
       });
     }
   }
@@ -247,151 +162,130 @@ function stratBundle(markets) {
 }
 
 /**
- * 【策略3】临近到期高动量 (Near-Expiry Momentum)
- * 逻辑：3-10天内到期、概率在 55-80%（有足够悬念）、高流动性。
- * 市场在最后阶段信息快速涌入，概率剧烈波动，做对方向收益高。
- * 只在市场概率连续两个采样点向同一方向移动时买入（动量确认）。
- * 有效性：⚠️ 依赖信息优势，模拟盘当动量追踪来用
- */
-function stratNearExpiry(markets) {
-  return markets.filter(m => {
-    if (!m.end || !isValidMarket(m)) return false;
-    const daysLeft = (new Date(m.end) - new Date()) / 86400000;
-    return daysLeft >= 3 && daysLeft <= 10
-      && m.yes >= 0.55 && m.yes <= 0.80
-      && m.vol > 200000; // 只碰超高流动性市场
-  }).map(m => {
-    const daysLeft = Math.round((new Date(m.end) - new Date()) / 86400000);
-    // 概率越靠近 0.5，赔率倍数越高
-    const oddsMultiplier = 1 / m.yes;
-    const edge = (m.yes - 0.55) * 0.4;
-    return {
-      strategy: 'near_expiry',
-      market: m,
-      choice: 'YES',
-      edge: Math.max(edge, 0.07),
-      reason: `临近到期动量: ${daysLeft}天结算, YES=${(m.yes*100).toFixed(1)}%, 赔率${oddsMultiplier.toFixed(2)}x, 24h成交$${(m.vol/1000).toFixed(0)}K`
-    };
-  });
-}
-
-/**
- * 【策略4】BTC 价格锚定套利 (Crypto Price Anchoring)
- * 逻辑：用 Binance 实时价格计算 Polymarket BTC 价格市场的"理论概率"
- * 如果 Polymarket 定价偏离理论概率 > 8%，说明市场滞后，买入被低估方向
- * 
- * 计算方式：
- * - "BTC > $X on date Y"：如果当前价格已经远高于X，概率应该很高
- * - 用正态分布估算到期时概率（基于BTC日波动率约2-3%）
+ * 【策略2】BTC 当日价格锚定
+ * 用 Binance 实时价格 vs Polymarket 今日/明日价格市场
+ * 理论概率 vs 市场定价差 > 8% 即买入
  */
 async function stratCryptoAnchor(markets, currentBtcPrice) {
   if (!currentBtcPrice) return [];
   const opps = [];
-
-  // BTC 日波动率约 2.5%（历史均值）
-  const dailyVol = 0.025;
+  const dailyVol = 0.025; // BTC 日波动率约 2.5%
 
   const btcMarkets = markets.filter(m => {
     if (!isValidMarket(m)) return false;
-    if (m.vol < 50000) return false;
+    if (m.vol < 30000) return false;
     const q = m.question.toLowerCase();
     return (q.includes('bitcoin') || q.includes('btc')) &&
            (q.includes('above') || q.includes('below') || q.includes('reach') || q.includes('dip'));
   });
 
   for (const m of btcMarkets) {
-    // 从问题中提取目标价格
     const priceMatch = m.question.match(/\$([0-9,]+)/);
     if (!priceMatch) continue;
     const targetPrice = parseFloat(priceMatch[1].replace(',', ''));
+    const hoursLeft = (new Date(m.end) - new Date()) / 3600000;
+    const daysLeft = hoursLeft / 24;
 
-    // 计算到期剩余天数
-    const daysLeft = (new Date(m.end) - new Date()) / 86400000;
-    if (daysLeft <= 0 || daysLeft > 30) continue;
-
-    // 用对数正态分布估算到期时 BTC > targetPrice 的概率
-    // z = (ln(target/current)) / (vol * sqrt(days))
-    const vol = dailyVol * Math.sqrt(daysLeft);
+    const vol = dailyVol * Math.sqrt(Math.max(daysLeft, 0.04));
     const z = Math.log(targetPrice / currentBtcPrice) / vol;
-    // 正态CDF近似
-    const theoreticalProb = 1 - (0.5 * (1 + erf(z / Math.sqrt(2))));
+    const cdf = 0.5 * (1 + erf(z / Math.sqrt(2)));
+    const theoretical = 1 - cdf; // P(BTC > target)
 
     const isAbove = m.question.toLowerCase().includes('above') || m.question.toLowerCase().includes('reach');
     const marketProb = isAbove ? m.yes : m.no;
-    const theoretical = isAbove ? theoreticalProb : (1 - theoreticalProb);
-    const diff = theoretical - marketProb;
+    const theoreticalForSide = isAbove ? theoretical : (1 - theoretical);
+    const diff = theoreticalForSide - marketProb;
 
-    // 理论概率比市场概率高 8% 以上，说明市场低估
-    if (diff > 0.08 && theoretical > 0.15 && theoretical < 0.92) {
+    if (diff > 0.08 && theoreticalForSide > 0.10 && theoreticalForSide < 0.92) {
       opps.push({
         strategy: 'crypto_anchor',
         market: m,
         choice: isAbove ? 'YES' : 'NO',
         edge: diff,
-        reason: `BTC价格锚定: 当前=$${currentBtcPrice.toFixed(0)}, ��标=$${targetPrice.toLocaleString()}, 理论概率=${(theoretical*100).toFixed(1)}%, 市场给${(marketProb*100).toFixed(1)}%, 低估${(diff*100).toFixed(1)}%, ${daysLeft.toFixed(1)}天到期`
+        reason: `BTC锚定: 现价=$${currentBtcPrice.toFixed(0)}, 目标=$${targetPrice.toLocaleString()}, 理论=${(theoreticalForSide*100).toFixed(1)}%>市场${(marketProb*100).toFixed(1)}%, 差${(diff*100).toFixed(1)}%, ${Math.round(hoursLeft)}h后结算`
       });
     }
   }
   return opps;
 }
 
-// 误差函数（正态分布CDF用）
 function erf(x) {
-  const a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429, p=0.3275911;
-  const sign = x < 0 ? -1 : 1;
-  x = Math.abs(x);
-  const t = 1.0 / (1.0 + p * x);
-  const y = 1.0 - (((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
-  return sign * y;
+  const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+  const sign=x<0?-1:1; x=Math.abs(x);
+  const t=1/(1+p*x);
+  return sign*(1-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x));
 }
 
 /**
- * 【策略5】BTC 阶梯价格时序套利
- * 逻辑：同一到期日，"BTC>$64K" 概率必须 >= "BTC>$66K" 概率 >= "BTC>$68K" 概率
- * 如果出现逆序（低门槛反而概率更低），说明定价异常
+ * 【策略3】BTC 阶梯价格套利（短线版）
+ * 同一截止日期，P(BTC>低门槛) 必须 >= P(BTC>高门槛)
+ * 逆序即买入被低估的
  */
 function stratCryptoLadder(markets) {
   const opps = [];
-  // 找同截止日期的 BTC "above X" 市场
   const btcAbove = markets.filter(m =>
-    isValidMarket(m) && m.vol > 30000 &&
+    isValidMarket(m) && m.vol > 20000 &&
     (m.question.toLowerCase().includes('bitcoin') || m.question.toLowerCase().includes('btc')) &&
     (m.question.toLowerCase().includes('above') || m.question.toLowerCase().includes('reach'))
-  );
+  ).map(m => {
+    const pm = m.question.match(/\$([0-9,]+)/);
+    if (!pm) return null;
+    return { ...m, targetPrice: parseFloat(pm[1].replace(',','')) };
+  }).filter(Boolean);
 
-  // 按截止日期分组
   const byDate = {};
   btcAbove.forEach(m => {
-    const priceMatch = m.question.match(/\$([0-9,]+)/);
-    if (!priceMatch) return;
-    const price = parseFloat(priceMatch[1].replace(',', ''));
-    const key = m.end?.slice(0, 10) || 'unknown';
+    const key = m.end?.slice(0, 13) || 'unknown';
     if (!byDate[key]) byDate[key] = [];
-    byDate[key].push({ ...m, targetPrice: price });
+    byDate[key].push(m);
   });
 
-  for (const [date, group] of Object.entries(byDate)) {
+  for (const group of Object.values(byDate)) {
     if (group.length < 2) continue;
-    group.sort((a, b) => a.targetPrice - b.targetPrice); // 价格从低到高排
-
+    group.sort((a, b) => a.targetPrice - b.targetPrice);
     for (let i = 0; i < group.length - 1; i++) {
       for (let j = i + 1; j < group.length; j++) {
-        const low = group[i], high = group[j]; // low.targetPrice < high.targetPrice
-        // 应该: P(BTC>低门槛) >= P(BTC>高门槛)
-        if (low.yes < high.yes - 0.06) {
-          // 低门槛反而概率更低，买低门槛 YES
+        const lo = group[i], hi = group[j];
+        const diff = hi.yes - lo.yes;
+        if (diff > 0.06) {
+          const hoursLeft = Math.round((new Date(lo.end) - new Date()) / 3600000);
           opps.push({
             strategy: 'crypto_ladder',
-            market: low,
+            market: lo,
             choice: 'YES',
-            edge: high.yes - low.yes,
-            reason: `BTC阶梯套利: P(>${low.targetPrice.toLocaleString()})=${(low.yes*100).toFixed(1)}% < P(>${high.targetPrice.toLocaleString()})=${(high.yes*100).toFixed(1)}%, 逻辑矛盾, 价差${((high.yes-low.yes)*100).toFixed(1)}%`
+            edge: diff,
+            reason: `BTC阶梯: P(>$${lo.targetPrice.toLocaleString()})=${(lo.yes*100).toFixed(1)}% < P(>$${hi.targetPrice.toLocaleString()})=${(hi.yes*100).toFixed(1)}%, 逻辑矛盾, ${hoursLeft}h结算`
           });
         }
       }
     }
   }
   return opps;
+}
+
+/**
+ * 【策略4】短线高动量（今日结算 + 概率 45-75% + 超高流动性）
+ * 今天结算的市场，概率接近50/50，说明真正有悬念，赔率好
+ * 流动性 > $500K 才碰（保证真实盘也能成交）
+ */
+function stratTodayMomentum(markets) {
+  return markets.filter(m => {
+    if (!isValidMarket(m)) return false;
+    const hoursLeft = (new Date(m.end) - new Date()) / 3600000;
+    return hoursLeft <= 24              // 今天结算
+      && m.yes >= 0.45 && m.yes <= 0.75 // 概率接近50/50，有悬念
+      && m.vol > 500000;                // 超高流动性（$50万/天）
+  }).map(m => {
+    const hoursLeft = Math.round((new Date(m.end) - new Date()) / 3600000);
+    const edge = Math.abs(m.yes - 0.5) + 0.08; // 偏离50%越多，edge越高
+    return {
+      strategy: 'today_momentum',
+      market: m,
+      choice: m.yes >= 0.5 ? 'YES' : 'NO', // 押概率更高的方向
+      edge,
+      reason: `今日高流动性: ${hoursLeft}h后结算, YES=${(m.yes*100).toFixed(1)}%, vol=$${(m.vol/1000).toFixed(0)}K`
+    };
+  });
 }
 
 // 过期判断
@@ -411,8 +305,8 @@ function filterRealProfit(opps) {
 }
 
 // ── AUTO TRADE ──
-const MAX_BET = 300;
-const MIN_EDGE = 0.08; // 至少8%真实利润空间，只买有逻辑的单
+const MAX_BET = 500; // 短线，结算快，可以下稍大
+const MIN_EDGE = 0.06; // 短线策略，6%以上即可（手续费2.5%后仍有3.5%净利）
 
 // ── 真实盘交易成本模拟 ──
 const FEE_RATE = 0.02;       // Polymarket 手续费 2%
@@ -461,11 +355,10 @@ async function runArbitrage() {
     const cryptoOpps = await stratCryptoAnchor(markets, btcPrice);
 
     const rawOpps = [
-      ...stratTimeSeries(markets),    // 策略1: 时序套利（最硬）
-      ...stratBundle(markets),        // 策略2: Bundle定��错误
-      ...stratNearExpiry(markets),    // 策略3: 临近到期动量
-      ...cryptoOpps,                  // 策略4: BTC价格锚定
-      ...stratCryptoLadder(markets),  // 策略5: BTC阶梯价格套利
+      ...stratShortBundle(markets),   // 策略1: Bundle缺口（当日/明日）
+      ...cryptoOpps,                  // 策略2: BTC价格锚定
+      ...stratCryptoLadder(markets),  // 策略3: BTC阶梯套利
+      ...stratTodayMomentum(markets), // 策略4: 今日高流动性动量
     ].filter(o => o.edge >= MIN_EDGE);
 
     const opps = filterRealProfit(rawOpps, markets)
