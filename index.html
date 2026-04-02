@@ -1075,16 +1075,36 @@ function renderPTabContent() {
       const openDate = new Date(p.opened_at * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric'});
       const closeDate = p.closed_at ? new Date(p.closed_at * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric'}) : '—';
       const win = pnl > 0;
-      return `<div class="pcard">
-        <div class="pcard-q">${p.question.slice(0,70)}${p.question.length>70?'…':''}</div>
-        <div class="pcard-zh">${zh || '&nbsp;'}</div>
-        <div class="pcard-footer">
-          <span class="pcard-badge ${p.choice==='YES'?'badge-yes':'badge-no'}">${p.choice}</span>
-          <span class="pcard-result-label" style="${win?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${win?'盈利':'亏损'}</span>
-          <span class="pcard-cost">成本 <strong>${fUSD(p.amount)}</strong></span>
-          <span class="pcard-pnl ${win?'up':'dn'}">${pnl>=0?'+':''}${fUSD(pnl)}</span>
+      const closedProb = p.close_price || p.prob;
+      const yp2 = Math.round(closedProb * 100);
+      return `<div class="mcard" style="cursor:default;margin-bottom:10px;${win?'border-left:3px solid var(--green)':'border-left:3px solid var(--red)'}">
+        <div class="mcard-body">
+          <div class="mcard-top">
+            <div class="mcard-icon">${win?'✅':'❌'}</div>
+            <div class="mcard-info">
+              <div class="mcard-en">${p.question.slice(0,65)}${p.question.length>65?'…':''}</div>
+              <div class="mcard-zh">${zh||'翻译中…'}</div>
+              <div class="mcard-tags">
+                <span class="pcard-badge ${p.choice==='YES'?'badge-yes':'badge-no'}">${p.choice}</span>
+                <span class="pcard-result-label" style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:5px;${win?'background:var(--green-bg);color:var(--green)':'background:var(--red-bg);color:var(--red)'}">${win?'盈利':'亏损'}</span>
+              </div>
+            </div>
+          </div>
+          <div class="prob" style="margin-top:10px">
+            <div class="prob-nums">
+              <span class="prob-yes">平仓概率 ${yp2}%</span>
+              <span class="prob-no">成本 ${fUSD(p.amount)}</span>
+            </div>
+            <div class="bar"><div class="bar-fill" style="width:${yp2}%;${win?'':'background:var(--red)'}"></div></div>
+          </div>
         </div>
-        <div class="pcard-date">${openDate} 开仓 → ${closeDate} 平仓</div>
+        <div class="mcard-foot">
+          <span class="mcard-date">🗓 ${openDate} → ${closeDate}</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:12px;color:var(--text2)">盈亏</span>
+            <span style="font-size:15px;font-weight:800;${win?'color:var(--green)':'color:var(--red)'}">${pnl>=0?'+':''}${fUSD(pnl)}</span>
+          </div>
+        </div>
       </div>`;
     }).join('');
 
