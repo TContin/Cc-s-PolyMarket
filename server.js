@@ -109,7 +109,7 @@ function stratTimeSeries(markets) {
 
   for (const kw of keywords) {
     const group = markets
-      .filter(m => m.question.toLowerCase().includes(kw) && m.end)
+      .filter(m => m.question.toLowerCase().includes(kw) && m.end && isValidMarket(m))
       .sort((a, b) => a.end.localeCompare(b.end));
 
     for (let i = 0; i < group.length - 1; i++) {
@@ -133,17 +133,24 @@ function stratTimeSeries(markets) {
 }
 
 /**
- * 高确定性套利：YES > 92% 的市场，买 YES 低风险
+ * 高确定性套利：YES > 92% 的市场
+ * 过滤：排除���期市场、概率>99.5%（回报太低）、成交量不足
  */
+function isValidMarket(m) {
+  if (!m.end) return true;
+  const daysLeft = (new Date(m.end) - new Date()) / 86400000;
+  return daysLeft > 1; // 至少还有1天才到期
+}
+
 function stratHighConf(markets) {
   return markets
-    .filter(m => m.yes >= 0.92 && m.yes < 0.999 && m.vol > 50000)
+    .filter(m => m.yes >= 0.92 && m.yes < 0.995 && m.vol > 50000 && isValidMarket(m))
     .map(m => ({
       strategy: 'high_conf',
       market: m,
       choice: 'YES',
       edge: m.yes - 0.92,
-      reason: `高确定性: YES=${(m.yes*100).toFixed(1)}%, 24h成交$${(m.vol/1000).toFixed(0)}K`
+      reason: `高确定性: YES=${(m.yes*100).toFixed(1)}%, 24h成交$${(m.vol/1000).toFixed(0)}K, 剩余${Math.round((new Date(m.end)-new Date())/86400000)}天`
     }));
 }
 
@@ -152,19 +159,19 @@ function stratHighConf(markets) {
  */
 function stratHighConfNo(markets) {
   return markets
-    .filter(m => m.no >= 0.92 && m.no < 0.999 && m.vol > 50000)
+    .filter(m => m.no >= 0.92 && m.no < 0.995 && m.vol > 50000 && isValidMarket(m))
     .map(m => ({
       strategy: 'high_conf_no',
       market: m,
       choice: 'NO',
       edge: m.no - 0.92,
-      reason: `高确定性NO: NO=${(m.no*100).toFixed(1)}%, 24h成交$${(m.vol/1000).toFixed(0)}K`
+      reason: `高确定性NO: NO=${(m.no*100).toFixed(1)}%, 24h成交$${(m.vol/1000).toFixed(0)}K, 剩余${Math.round((new Date(m.end)-new Date())/86400000)}天`
     }));
 }
 
 // ── AUTO TRADE ──
 const MAX_BET = 300;
-const MIN_EDGE = 0.04;
+const MIN_EDGE = 0.06; // 至少6%利润空间，避免微利市场
 const MAX_POSITIONS = 20;
 
 async function runArbitrage() {
