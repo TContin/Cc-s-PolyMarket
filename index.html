@@ -599,6 +599,7 @@ async function translate(text) {
 
 // ── LOAD ──
 let page = 0, pageSize = 50, loading = false, hasMore = true;
+let allMkts = []; // 全局缓存，跨板块共享
 
 function parseMkt(m) {
   let prices = [];
@@ -614,35 +615,63 @@ function parseMkt(m) {
   };
 }
 
+// 拉取多页数据直到每个分类都有 ≥50 条（最多拉500条）
 async function loadMarkets(reset = true) {
   if (loading) return;
   loading = true;
   const ico = document.getElementById('refreshIco');
   if (reset) {
-    page = 0; hasMore = true; mkts = [];
+    page = 0; hasMore = true; mkts = []; allMkts = [];
     ico.classList.add('spin');
     document.getElementById('mList').innerHTML = '<div class="loader"><div class="spinner"></div>加载中…</div>';
   }
   try {
-    const offset = page * pageSize;
-    const url = `/api/markets?limit=${pageSize}&active=true&closed=false&order=volume24hr&ascending=false&offset=${offset}`;
-    const r = await fetch(url);
-    const data = await r.json();
-    const batch = data.filter(m => m.question && m.outcomePrices).map(parseMkt);
-    if (batch.length < pageSize) hasMore = false;
-    mkts = reset ? batch : [...mkts, ...batch];
-    page++;
+    // 累计拉取，直到全类数量够或拉满500条
+    const MAX_TOTAL = 500;
+    const TARGET_PER_CAT = 50;
+    let offset = reset ? 0 : allMkts.length;
+    let fetched = 0;
+
+    const catCount = {};
+    allMkts.forEach(m => { catCount[m.cat] = (catCount[m.cat]||0) + 1; });
+
+    const needMore = () => {
+      // 只要还有任何一个非"other"分类不足 TARGET_PER_CAT 且还没拉满
+      const cats = ['politics','geopolitics','crypto','economy','sports','esports','tech','science','entertainment'];
+      return cats.some(c => (catCount[c]||0) < TARGET_PER_CAT) && (allMkts.length + fetched) < MAX_TOTAL;
+    };
+
+    while (needMore()) {
+      const url = `/api/markets?limit=50&active=true&closed=false&order=volume24hr&ascending=false&offset=${offset}`;
+      const r = await fetch(url);
+      const data = await r.json();
+      if (!data.length) { hasMore = false; break; }
+      const batch = data.filter(m => m.question && m.outcomePrices).map(parseMkt);
+      batch.forEach(m => {
+        if (!allMkts.find(x => x.id === m.id)) {
+          allMkts.push(m);
+          catCount[m.cat] = (catCount[m.cat]||0) + 1;
+        }
+      });
+      fetched += data.length;
+      offset += 50;
+      if (data.length < 50) { hasMore = false; break; }
+    }
+
+    mkts = allMkts;
+    page = Math.ceil(allMkts.length / pageSize);
     if (reset) {
       applyFilter();
       updateStats();
       buildTicker();
     } else {
-      applyFilter(false); // append mode
+      applyFilter(false);
     }
     lazyTranslate();
-    document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) + ' 更新';
+    document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) + ` 更新 (${allMkts.length}条)`;
   } catch(e) {
     if (reset) document.getElementById('mList').innerHTML = '<div class="loader">⚠️ 加载失败，请稍后重试</div>';
+    console.error(e);
   }
   loading = false;
   ico.classList.remove('spin');
