@@ -345,6 +345,10 @@ async function runArbitrage() {
       const key = `${opp.market.id}_${opp.choice}`;
       if (openKeys.has(key)) continue;
 
+      // 禁止自我对冲：同市场已有反向仓则跳过
+      const reverseKey = `${opp.market.id}_${opp.choice === 'YES' ? 'NO' : 'YES'}`;
+      if (openKeys.has(reverseKey)) continue;
+
       // 根据 edge 决定下注金额
       const betAmt = Math.min(MAX_BET, Math.max(50, Math.round(opp.edge * 1000)));
       if (betAmt > balance) continue;
