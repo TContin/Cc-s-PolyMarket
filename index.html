@@ -480,9 +480,13 @@ body { background: var(--bg); font-family: var(--font); color: var(--text); min-
       </div>
       <div class="bet-box">
         <div class="bet-label">💰 下注</div>
-        <div class="choice-row">
-          <div class="cbtn cbtn-yes" id="cYes" onclick="pick('YES')">✅ YES</div>
-          <div class="cbtn cbtn-no"  id="cNo"  onclick="pick('NO')">❌ NO</div>
+        <div class="choice-row" id="choiceRow">
+          <div class="cbtn cbtn-yes" id="cYes" onclick="pick('YES')">
+            ✅ YES<br><span id="cYesProb" style="font-size:11px;font-weight:500;opacity:0.8"></span>
+          </div>
+          <div class="cbtn cbtn-no" id="cNo" onclick="pick('NO')">
+            ❌ NO<br><span id="cNoProb" style="font-size:11px;font-weight:500;opacity:0.8"></span>
+          </div>
         </div>
         <div class="amt-row">
           <span class="amt-label">金额 $</span>
@@ -495,8 +499,19 @@ body { background: var(--bg); font-family: var(--font); color: var(--text); min-
           <div class="qbtn" onclick="setAmt(100)">$100</div>
         </div>
         <div class="payout-rows">
-          <div class="prow"><span class="prow-l">预计回报</span><span class="prow-v" id="payOut">—</span></div>
-          <div class="prow"><span class="prow-l">潜在收益</span><span class="prow-v up"  id="profOut">—</span></div>
+          <div class="prow">
+            <span class="prow-l">胜出赔率</span>
+            <span class="prow-v" id="payOut">—</span>
+          </div>
+          <div class="prow">
+            <span class="prow-l">胜出收益</span>
+            <span class="prow-v up" id="profOut">—</span>
+          </div>
+          <div class="prow" style="border-top:none;padding-top:0">
+            <span style="font-size:11px;color:var(--text3)">
+              仅在所选方向结果正确时获得回报
+            </span>
+          </div>
         </div>
         <button class="sub-btn" onclick="placeBet()">确认下注</button>
       </div>
@@ -877,6 +892,8 @@ function openModal(id, choice=null) {
   document.getElementById('mBarFill').style.width = yp+'%';
   document.getElementById('cYes').className = 'cbtn cbtn-yes';
   document.getElementById('cNo').className  = 'cbtn cbtn-no';
+  document.getElementById('cYesProb').textContent = `市场概率 ${yp}%`;
+  document.getElementById('cNoProb').textContent  = `市场概率 ${100-yp}%`;
   document.getElementById('amtIn').value = 10;
   document.getElementById('payOut').textContent  = '—';
   document.getElementById('profOut').textContent = '—';
