@@ -521,10 +521,10 @@ body { background: var(--bg); font-family: var(--font); color: var(--text); min-
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px" id="profileStats"></div>
-      <div style="display:flex;gap:0;margin-bottom:16px;background:var(--bg);border-radius:10px;padding:3px">
-        <div class="ptab active" id="ptab-pos" onclick="switchPTab('pos')">💼 持仓 <span id="ptab-pos-cnt"></span></div>
-        <div class="ptab" id="ptab-closed" onclick="switchPTab('closed')">📋 记录 <span id="ptab-closed-cnt"></span></div>
-        <div class="ptab" id="ptab-log" onclick="switchPTab('log')">🤖 日志</div>
+      <div style="display:flex;gap:0;margin-bottom:16px;background:var(--bg);border-radius:12px;padding:3px">
+        <div class="ptab active" id="ptab-pos" onclick="switchPTab('pos')">当前持仓 <span id="ptab-pos-cnt" style="background:var(--accent);color:#fff;border-radius:20px;padding:1px 6px;font-size:10px;margin-left:3px"></span></div>
+        <div class="ptab" id="ptab-closed" onclick="switchPTab('closed')">已结束 <span id="ptab-closed-cnt" style="background:var(--green);color:#fff;border-radius:20px;padding:1px 6px;font-size:10px;margin-left:3px"></span></div>
+        <div class="ptab" id="ptab-log" onclick="switchPTab('log')">机器人日志</div>
       </div>
       <div id="ptab-content"></div>
     </div>
@@ -992,85 +992,64 @@ function renderPTabContent() {
   const stratLabel = { time_series:'📐 时序套利', high_conf:'🎯 高确YES', high_conf_no:'🔒 高确NO' };
 
   if (curPTab === 'pos') {
-    // 两栏布局
-    const posCard = p => {
+    if (!positions.length) {
+      el.innerHTML = '<div class="empty" style="padding:40px 0"><div class="empty-ico">🤖</div>机器人扫描中…<br><span style="font-size:12px">每5分钟自动套利</span></div>';
+      return;
+    }
+    el.innerHTML = positions.map(p => {
       const mkt = mkts.find(m => m.id === p.market_id);
       const curProb = mkt ? (p.choice === 'YES' ? mkt.yes : mkt.no) : p.prob;
       const curVal = p.amount / p.prob * curProb;
       const pnl = curVal - p.amount;
       const zh = zhCache[p.market_id] || '';
-      const date = new Date(p.opened_at * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric'});
+      const date = new Date(p.opened_at * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      const pct = ((curProb - p.prob) / p.prob * 100).toFixed(1);
       return `<div class="pcard">
-        <div class="pcard-q">${p.question.slice(0,60)}${p.question.length>60?'…':''}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:4px">
+          <div class="pcard-q" style="flex:1">${p.question.slice(0,65)}${p.question.length>65?'…':''}</div>
+          <span class="pcard-badge ${p.choice==='YES'?'badge-yes':'badge-no'}" style="flex-shrink:0">${p.choice}</span>
+        </div>
         ${zh ? `<div class="pcard-zh">${zh}</div>` : ''}
-        <div class="pcard-row">
-          <span class="pcard-badge ${p.choice==='YES'?'badge-yes':'badge-no'}">${p.choice}</span>
-          <span style="font-size:10px;color:var(--accent)">${stratLabel[p.strategy]||p.strategy}</span>
-        </div>
-        <div class="pcard-row" style="margin-top:6px">
-          <span class="pcard-num">成本 <strong>${fUSD(p.amount)}</strong></span>
-          <span class="pcard-num ${pnl>=0?'up':'dn'}">浮盈 <strong>${pnl>=0?'+':''}${fUSD(pnl)}</strong></span>
-          <span style="font-size:10px;color:var(--text3);margin-left:auto">${date}</span>
-        </div>
-      </div>`;
-    };
-    const closedCard = p => {
-      const pnl = p.pnl || 0;
-      const zh = zhCache[p.market_id] || '';
-      const date = new Date((p.closed_at||p.opened_at) * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric'});
-      return `<div class="pcard">
-        <div class="pcard-q">${p.question.slice(0,60)}${p.question.length>60?'…':''}</div>
-        ${zh ? `<div class="pcard-zh">${zh}</div>` : ''}
-        <div class="pcard-row">
-          <span class="pcard-badge ${p.choice==='YES'?'badge-yes':'badge-no'}">${p.choice}</span>
-          <span class="pcard-num">成本 <strong>${fUSD(p.amount)}</strong></span>
-          <span class="pcard-num ${pnl>=0?'up':'dn'}">盈亏 <strong>${pnl>=0?'+':''}${fUSD(pnl)}</strong></span>
-          <span style="font-size:10px;color:var(--text3);margin-left:auto">${date}</span>
-        </div>
-      </div>`;
-    };
-
-    const leftHtml = positions.length
-      ? positions.map(posCard).join('')
-      : '<div class="empty" style="padding:24px 0"><div class="empty-ico">🤖</div>扫描中…</div>';
-    const rightHtml = closed.length
-      ? closed.map(closedCard).join('')
-      : '<div class="empty" style="padding:24px 0"><div class="empty-ico">📋</div>暂无记录</div>';
-
-    el.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start">
-        <div>
-          <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">
-            📈 当前持仓 <span style="color:var(--accent)">${positions.length}</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-top:6px">
+          <span style="font-size:10px;color:var(--accent);font-weight:600">${stratLabel[p.strategy]||p.strategy}</span>
+          <div style="display:flex;gap:12px;align-items:center">
+            <span class="pcard-num">成本 <strong>${fUSD(p.amount)}</strong></span>
+            <span class="pcard-num">潜回报 <strong>${fUSD(p.payout)}</strong></span>
+            <span class="pcard-num ${pnl>=0?'up':'dn'}" style="font-size:13px;font-weight:700">${pnl>=0?'+':''}${fUSD(pnl)}</span>
           </div>
-          ${leftHtml}
-        </div>
-        <div>
-          <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">
-            ✅ 已结束 <span style="color:var(--green)">${closed.length}</span>
-          </div>
-          ${rightHtml}
+          <span style="font-size:10px;color:var(--text3)">${date}</span>
         </div>
       </div>`;
+    }).join('');
 
   } else if (curPTab === 'closed') {
-    // 这个 tab 保留但内容合并到 pos 了，这里显示完整历史
     if (!closed.length) {
-      el.innerHTML = '<div class="empty" style="padding:30px 0"><div class="empty-ico">📋</div>暂无平仓记录</div>';
+      el.innerHTML = '<div class="empty" style="padding:40px 0"><div class="empty-ico">📋</div>暂无结束记录</div>';
       return;
     }
     el.innerHTML = closed.map(p => {
       const pnl = p.pnl || 0;
       const zh = zhCache[p.market_id] || '';
-      const date = new Date((p.closed_at||p.opened_at) * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric'});
+      const openDate = new Date(p.opened_at * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric'});
+      const closeDate = new Date((p.closed_at||p.opened_at) * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric'});
       return `<div class="pcard">
-        <div class="pcard-q">${p.question.slice(0,65)}${p.question.length>65?'…':''}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:4px">
+          <div class="pcard-q" style="flex:1">${p.question.slice(0,65)}${p.question.length>65?'…':''}</div>
+          <span class="pcard-badge ${p.choice==='YES'?'badge-yes':'badge-no'}" style="flex-shrink:0">${p.choice}</span>
+        </div>
         ${zh ? `<div class="pcard-zh">${zh}</div>` : ''}
-        <div class="pcard-row">
-          <span class="pcard-badge ${p.choice==='YES'?'badge-yes':'badge-no'}">${p.choice}</span>
-          <span class="pcard-num">成本 <strong>${fUSD(p.amount)}</strong></span>
-          <span class="pcard-num ${pnl>=0?'up':'dn'}">盈亏 <strong>${pnl>=0?'+':''}${fUSD(pnl)}</strong></span>
-          <span style="font-size:10px;color:var(--text3);margin-left:auto">${date}</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-top:6px">
+          <span style="font-size:10px;color:var(--text2)">${openDate} → ${closeDate}</span>
+          <div style="display:flex;gap:12px;align-items:center">
+            <span class="pcard-num">成本 <strong>${fUSD(p.amount)}</strong></span>
+            <span class="pcard-num ${pnl>=0?'up':'dn'}" style="font-size:14px;font-weight:700">${pnl>=0?'+':''}${fUSD(pnl)}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px">
+            ${pnl>=0
+              ? '<span style="font-size:18px">✅</span><span style="font-size:12px;color:var(--green);font-weight:600">盈利</span>'
+              : '<span style="font-size:18px">❌</span><span style="font-size:12px;color:var(--red);font-weight:600">亏损</span>'
+            }
+          </div>
         </div>
       </div>`;
     }).join('');
