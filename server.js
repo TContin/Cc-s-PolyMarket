@@ -105,15 +105,41 @@ function parseMkt(m) {
  * 如果 早截止YES > 晚截止YES + threshold，说明晚截止被低估，买入。
  * 有效性：✅ 真实市场定价矛盾，逻辑最硬
  */
+// 判断两个问题是否是"同一事件的不同截止版本"
+// 要求：问题高度相似（前40个词的词汇重叠度 > 60%）
+function isSameEvent(q1, q2) {
+  // 1. 截止日期必须不同（同截止日期不存在时序套利）
+  // 这个在调用处已经保证
+  
+  // 2. 提取核心词汇（去掉时间词、冠词）
+  const stopWords = new Set([
+    'will','the','a','an','by','in','on','at','of','to','be','is','are',
+    'was','were','have','has','had','do','does','did','for','with','from',
+    'that','this','they','than','above','below','before','after','until',
+    'january','february','march','april','may','june','july','august',
+    'september','october','november','december','2024','2025','2026','2027','2028'
+  ]);
+  const words1 = new Set(q1.toLowerCase().match(/\w{3,}/g)?.filter(w => !stopWords.has(w)) || []);
+  const words2 = new Set(q2.toLowerCase().match(/\w{3,}/g)?.filter(w => !stopWords.has(w)) || []);
+  
+  if (words1.size === 0 || words2.size === 0) return false;
+  
+  // 交集 / 并集 = Jaccard 相似度
+  const intersection = new Set([...words1].filter(w => words2.has(w)));
+  const union = new Set([...words1, ...words2]);
+  const jaccard = intersection.size / union.size;
+  
+  // 相似度 > 55% 才认为是同一事件
+  return jaccard > 0.55;
+}
+
 function stratTimeSeries(markets) {
   const opps = [];
-  // 扩展关键词，覆盖更多高流动性主题
   const keywords = [
     'iran', 'ukraine', 'russia', 'netanyahu', 'israel',
     'bitcoin', 'btc', 'ethereum', 'eth',
     'trump', 'fed rate', 'federal reserve', 'interest rate',
     'gaza', 'ceasefire', 'nato', 'china', 'taiwan',
-    'election', 'primary', 'president'
   ];
 
   for (const kw of keywords) {
@@ -122,8 +148,8 @@ function stratTimeSeries(markets) {
         m.question.toLowerCase().includes(kw) &&
         m.end &&
         isValidMarket(m) &&
-        m.vol > 30000 &&        // 保证流动性
-        m.yes > 0.05 && m.yes < 0.95  // 排除极端概率
+        m.vol > 50000 &&
+        m.yes > 0.05 && m.yes < 0.95
       )
       .sort((a, b) => a.end.localeCompare(b.end));
 
@@ -132,26 +158,33 @@ function stratTimeSeries(markets) {
     for (let i = 0; i < group.length - 1; i++) {
       for (let j = i + 1; j < group.length; j++) {
         const early = group[i], late = group[j];
+        
+        // ✅ 核心过滤：截止日期必须不同
+        if (early.end === late.end) continue;
+        
+        // ✅ 核心过滤：两个问题必须是同一事件
+        if (!isSameEvent(early.question, late.question)) continue;
+        
         const gap = early.yes - late.yes;
-        // 价差 > 8%，且晚截止不能超过早截止太多（说明是完全不同问题）
-        if (gap > 0.08 && gap < 0.60) {
+        // 正向：早截止YES > 晚截止YES（晚截止被低估，买YES）
+        if (gap > 0.08 && gap < 0.55) {
           opps.push({
             strategy: 'time_series',
             market: late,
             choice: 'YES',
             edge: gap,
-            reason: `时序套利: [${early.end}] YES=${(early.yes*100).toFixed(1)}% > [${late.end}] YES=${(late.yes*100).toFixed(1)}%, 价差${(gap*100).toFixed(1)}%, vol=$${(late.vol/1000).toFixed(0)}K`
+            reason: `时序套利: 早[${early.end}]YES=${(early.yes*100).toFixed(1)}% > 晚[${late.end}]YES=${(late.yes*100).toFixed(1)}%, 价差${(gap*100).toFixed(1)}%, vol=$${(late.vol/1000).toFixed(0)}K`
           });
         }
-        // 反向：如果晚截止 YES 远高于早截止 YES，说明早截止被高估，买 NO
+        // 反向：晚截止YES > 早截止YES（早截止被高估，买NO）
         const reverseGap = late.yes - early.yes;
-        if (reverseGap > 0.12 && reverseGap < 0.60 && early.no > 0.05) {
+        if (reverseGap > 0.12 && reverseGap < 0.55 && early.no > 0.05) {
           opps.push({
             strategy: 'time_series',
             market: early,
             choice: 'NO',
             edge: reverseGap * 0.7,
-            reason: `时序反转: [${late.end}] YES=${(late.yes*100).toFixed(1)}% >> [${early.end}] YES=${(early.yes*100).toFixed(1)}%, 早截止被高估, vol=$${(early.vol/1000).toFixed(0)}K`
+            reason: `时序反转: 晚[${late.end}]YES=${(late.yes*100).toFixed(1)}% >> 早[${early.end}]YES=${(early.yes*100).toFixed(1)}%, 早截止高估, vol=$${(early.vol/1000).toFixed(0)}K`
           });
         }
       }
