@@ -684,6 +684,10 @@ async function loadMarkets(reset = true) {
     }
     lazyTranslate();
     document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) + ` 更新 (${allMkts.length}条)`;
+    // 市场数据加载完成，如果个人中心开着，刷新持仓的浮盈
+    if (document.getElementById('profileOverlay').classList.contains('open')) {
+      renderPTabContent();
+    }
   } catch(e) {
     if (reset) document.getElementById('mList').innerHTML = '<div class="loader">⚠️ 加载失败，请稍后重试</div>';
     console.error(e);
@@ -961,8 +965,11 @@ function triggerArb() {
 let curPTab = 'pos';
 
 function openProfile() {
-  renderProfile();
   document.getElementById('profileOverlay').classList.add('open');
+  // 先用���有数据渲染一次（可能是空/旧数据）
+  renderProfile();
+  // 然后拉最新数据再刷一次
+  loadSimStatus();
 }
 function closeProfile(e) {
   if (!e || e.target === document.getElementById('profileOverlay'))
@@ -1042,6 +1049,12 @@ function renderPTabContent() {
       el.innerHTML = '<div class="empty" style="padding:40px 0"><div class="empty-ico">🤖</div>机器人扫描中…<br><span style="font-size:12px">每5分钟自动套利</span></div>';
       return;
     }
+    // 如果市场数据还没加载，显示简化版
+    const mktsReady = mkts && mkts.length > 0;
+    if (!mktsReady) {
+      el.innerHTML = '<div class="loader" style="padding:30px 0"><div class="spinner"></div>市场数据加载中…</div>';
+      return;
+    }
     el.innerHTML = positions.map(p => {
       const mkt = mkts.find(m => m.id === p.market_id);
       const curProb = mkt ? (p.choice === 'YES' ? mkt.yes : mkt.no) : p.prob;
@@ -1117,7 +1130,7 @@ function renderPTabContent() {
       const date = new Date(l.ts * 1000).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
       const payout = l.amount / l.prob;
       const profit = payout - l.amount;
-      const zh = zhCache[l.market_id] || '';
+      const zh = zhCache[l.market_id] || zhCache[l.question] || '';
       return `<div class="mcard" style="cursor:default;margin-bottom:10px">
         <div class="mcard-body">
           <div class="mcard-top">
