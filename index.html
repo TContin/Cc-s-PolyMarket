@@ -504,6 +504,33 @@ body { background: var(--bg); font-family: var(--font); color: var(--text); min-
   </div>
 </div>
 
+<!-- PROFILE CENTER -->
+<div class="overlay" id="profileOverlay" onclick="closeProfile(event)">
+  <div class="modal" id="profileModal" style="max-height:92vh">
+    <div class="modal-handle"></div>
+    <div class="modal-body" style="padding:0 20px 40px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+        <div style="width:48px;height:48px;border-radius:14px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 4px 12px rgba(0,122,255,0.3)">🦊</div>
+        <div>
+          <div style="font-size:18px;font-weight:700;letter-spacing:-0.3px">Contin's Account</div>
+          <div style="font-size:13px;color:var(--text2)">模拟盘 · 自动套利中</div>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="chip-btn" style="color:var(--accent)" onclick="triggerArb()">🤖 扫描</button>
+          <button class="chip-btn" style="color:var(--red)" onclick="doReset()">重置</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px" id="profileStats"></div>
+      <div style="display:flex;gap:0;margin-bottom:16px;background:var(--bg);border-radius:10px;padding:3px">
+        <div class="ptab active" id="ptab-pos" onclick="switchPTab('pos')">💼 持仓 <span id="ptab-pos-cnt"></span></div>
+        <div class="ptab" id="ptab-closed" onclick="switchPTab('closed')">📋 记录 <span id="ptab-closed-cnt"></span></div>
+        <div class="ptab" id="ptab-log" onclick="switchPTab('log')">🤖 日志</div>
+      </div>
+      <div id="ptab-content"></div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
