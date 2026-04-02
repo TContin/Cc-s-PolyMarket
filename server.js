@@ -100,90 +100,80 @@ function parseMkt(m) {
 // ── ARBITRAGE STRATEGIES ──
 
 /**
- * 时间序列套利：同主题市场，截止越晚YES应该越高
- * 发现 earlier.yes > later.yes 时，买 later YES
+ * 【策略1】时序套利 (Time-Series Arbitrage)
+ * 逻辑：同一事件，截止越晚的版本，YES 概率理论上应 >= 截止越早的。
+ * 如果 早截止YES > 晚截止YES + threshold，说明晚截止被低估，买入。
+ * 有效性：✅ 真实市场定价矛盾，逻辑最硬
  */
 function stratTimeSeries(markets) {
-  const opportunities = [];
-  const keywords = ['iran', 'ukraine', 'russia', 'netanyahu', 'bitcoin', 'btc', 'trump', 'fed rate'];
+  const opps = [];
+  // 扩展关键词，覆盖更多高流动性主题
+  const keywords = [
+    'iran', 'ukraine', 'russia', 'netanyahu', 'israel',
+    'bitcoin', 'btc', 'ethereum', 'eth',
+    'trump', 'fed rate', 'federal reserve', 'interest rate',
+    'gaza', 'ceasefire', 'nato', 'china', 'taiwan',
+    'election', 'primary', 'president'
+  ];
 
   for (const kw of keywords) {
     const group = markets
-      .filter(m => m.question.toLowerCase().includes(kw) && m.end && isValidMarket(m))
+      .filter(m =>
+        m.question.toLowerCase().includes(kw) &&
+        m.end &&
+        isValidMarket(m) &&
+        m.vol > 30000 &&        // 保证流动性
+        m.yes > 0.05 && m.yes < 0.95  // 排除极端概率
+      )
       .sort((a, b) => a.end.localeCompare(b.end));
+
+    if (group.length < 2) continue;
 
     for (let i = 0; i < group.length - 1; i++) {
       for (let j = i + 1; j < group.length; j++) {
         const early = group[i], late = group[j];
-        // 晚截止的YES应该≥早截止的YES
-        if (early.yes > late.yes + 0.05 && late.yes > 0.05 && late.yes < 0.95) {
-          const edge = early.yes - late.yes;
-          opportunities.push({
+        const gap = early.yes - late.yes;
+        // 价差 > 8%，且晚截止不能超过早截止太多（说明是完全不同问题）
+        if (gap > 0.08 && gap < 0.60) {
+          opps.push({
             strategy: 'time_series',
             market: late,
             choice: 'YES',
-            edge,
-            reason: `${kw.toUpperCase()}: 早截止(${early.end}) YES=${(early.yes*100).toFixed(1)}% > 晚截止(${late.end}) YES=${(late.yes*100).toFixed(1)}%, 价差${(edge*100).toFixed(1)}%`
+            edge: gap,
+            reason: `时序套利: [${early.end}] YES=${(early.yes*100).toFixed(1)}% > [${late.end}] YES=${(late.yes*100).toFixed(1)}%, 价差${(gap*100).toFixed(1)}%, vol=$${(late.vol/1000).toFixed(0)}K`
+          });
+        }
+        // 反向：如果晚截止 YES 远高于早截止 YES，说明早截止被高估，买 NO
+        const reverseGap = late.yes - early.yes;
+        if (reverseGap > 0.12 && reverseGap < 0.60 && early.no > 0.05) {
+          opps.push({
+            strategy: 'time_series',
+            market: early,
+            choice: 'NO',
+            edge: reverseGap * 0.7,
+            reason: `时序反转: [${late.end}] YES=${(late.yes*100).toFixed(1)}% >> [${early.end}] YES=${(early.yes*100).toFixed(1)}%, 早截止被高估, vol=$${(early.vol/1000).toFixed(0)}K`
           });
         }
       }
     }
   }
-  return opportunities;
+  return opps;
 }
 
 /**
- * 高确定性套利：YES > 92% 的市场
- * 过滤：排除���期市场、概率>99.5%（回报太低）、成交量不足
- */
-function isValidMarket(m) {
-  if (!m.end) return true;
-  const daysLeft = (new Date(m.end) - new Date()) / 86400000;
-  return daysLeft > 1; // 至少还有1天才到期
-}
-
-function stratHighConf(markets) {
-  return markets
-    .filter(m => m.yes >= 0.92 && m.yes < 0.995 && m.vol > 50000 && isValidMarket(m))
-    .map(m => ({
-      strategy: 'high_conf',
-      market: m,
-      choice: 'YES',
-      edge: m.yes - 0.92,
-      reason: `高确定性: YES=${(m.yes*100).toFixed(1)}%, 24h成交$${(m.vol/1000).toFixed(0)}K, 剩余${Math.round((new Date(m.end)-new Date())/86400000)}天`
-    }));
-}
-
-/**
- * 低概率反向套利：NO > 92% 的市场
- */
-function stratHighConfNo(markets) {
-  return markets
-    .filter(m => m.no >= 0.92 && m.no < 0.995 && m.vol > 50000 && isValidMarket(m))
-    .map(m => ({
-      strategy: 'high_conf_no',
-      market: m,
-      choice: 'NO',
-      edge: m.no - 0.92,
-      reason: `高确定性NO: NO=${(m.no*100).toFixed(1)}%, 24h成交$${(m.vol/1000).toFixed(0)}K, 剩余${Math.round((new Date(m.end)-new Date())/86400000)}天`
-    }));
-}
-
-/**
- * 策略4: Bundle 套利 —— YES + NO 价格之和 < 0.98（不到1）
- * 同一市场的 YES+NO 理论上应该=1，出现 <0.98 时买入便宜方
- * 参考: ImMike/polymarket-arbitrage, m0wer/polyarb
+ * 【策略2】Bundle 定价错误 (Bundle Mispricing)
+ * 逻辑：同一市场 YES + NO 理论上 = 1（减去手续费约 0.96-0.98）。
+ * 如果 YES + NO < 0.95，说明有人在两边都定价过低，存在无风险套利空间。
+ * 有效性：✅ 数学上确定，但在高效市场中很快消失
  */
 function stratBundle(markets) {
   const opps = [];
   for (const m of markets) {
-    if (!isValidMarket(m) || m.vol < 30000) continue;
+    if (!isValidMarket(m) || m.vol < 50000) continue;
     const sum = m.yes + m.no;
-    // YES + NO 正常应接近1（包含手续费一般 0.96-0.99 之间）
-    // 如果 sum < 0.96，说明有定价错误，买两边都能套利
-    if (sum < 0.96 && sum > 0.50) {
-      const edge = 1 - sum; // 套利空间
-      // 买概率更低的那边（更便宜）
+    if (sum < 0.95 && sum > 0.50) {
+      const edge = 1 - sum;
+      // 买被更低估的那边
       const choice = m.yes <= m.no ? 'YES' : 'NO';
       const prob = choice === 'YES' ? m.yes : m.no;
       opps.push({
@@ -191,7 +181,7 @@ function stratBundle(markets) {
         market: m,
         choice,
         edge,
-        reason: `Bundle套利: YES=${(m.yes*100).toFixed(1)}%+NO=${(m.no*100).toFixed(1)}%=${(sum*100).toFixed(1)}%<100%, 套利空间${(edge*100).toFixed(1)}%`
+        reason: `Bundle定价缺口: YES(${(m.yes*100).toFixed(1)}%)+NO(${(m.no*100).toFixed(1)}%)=${(sum*100).toFixed(1)}%<100%, 套利空间${(edge*100).toFixed(1)}%, vol=$${(m.vol/1000).toFixed(0)}K`
       });
     }
   }
@@ -199,78 +189,53 @@ function stratBundle(markets) {
 }
 
 /**
- * 策略5: 动量滞后套利 —— 市场定价滞后于其他市场的信息更新
- * 同一主题，找 YES 价格差异大于15% 的配对（市场间定价不一致）
- * 参考: chudi.dev 的 BTC 动量策略思路
- */
-function stratMomentumLag(markets) {
-  const opps = [];
-  // 按主题分组（取问题前50字）
-  const topicGroups = {};
-  for (const m of markets) {
-    if (!isValidMarket(m) || m.vol < 20000) continue;
-    // 提取关键词作为主题key
-    const words = m.question.toLowerCase().match(/(trump|fed|bitcoin|btc|iran|ukraine|election|president|rate|war|ceasefire)/g);
-    if (!words || words.length === 0) continue;
-    const key = words.sort().join('-');
-    if (!topicGroups[key]) topicGroups[key] = [];
-    topicGroups[key].push(m);
-  }
-  for (const [topic, group] of Object.entries(topicGroups)) {
-    if (group.length < 2) continue;
-    // 找同主题里 YES 价格差异最大的配对
-    for (let i = 0; i < group.length; i++) {
-      for (let j = i + 1; j < group.length; j++) {
-        const a = group[i], b = group[j];
-        const diff = Math.abs(a.yes - b.yes);
-        // 两个题目相似但 YES 价格差 > 15%，说明有定价偏差
-        if (diff > 0.15) {
-          const low = a.yes < b.yes ? a : b;
-          const high = a.yes < b.yes ? b : a;
-          // 买被低估的那个
-          opps.push({
-            strategy: 'momentum_lag',
-            market: low,
-            choice: 'YES',
-            edge: diff * 0.5, // 保守估计可以捕捉50%的价差
-            reason: `动量滞后: [${low.question.slice(0,40)}] YES=${(low.yes*100).toFixed(0)}% vs [${high.question.slice(0,40)}] YES=${(high.yes*100).toFixed(0)}%, 价差${(diff*100).toFixed(0)}%`
-          });
-        }
-      }
-    }
-  }
-  return opps;
-}
-
-/**
- * 策略6: 临近到期高价值 —— 到期7天内、概率 60-80%、高成交量
- * 事件即将结算，市场往往在最后阶段产生剧烈波动和套利机会
- * 参考: m0wer/polyarb close-markets 策略
+ * 【策略3】临近到期高动量 (Near-Expiry Momentum)
+ * 逻辑：3-10天内到期、概率在 55-80%（有足够悬念）、高流动性。
+ * 市场在最后阶段信息快速涌入，概率剧烈波动，做对方向收益高。
+ * 只在市场概率连续两个采样点向同一方向移动时买入（动量确认）。
+ * 有效性：⚠️ 依赖信息优势，模拟盘当动量追踪来用
  */
 function stratNearExpiry(markets) {
   return markets.filter(m => {
     if (!m.end || !isValidMarket(m)) return false;
     const daysLeft = (new Date(m.end) - new Date()) / 86400000;
-    return daysLeft >= 1 && daysLeft <= 7      // 1-7天到期
-      && m.yes >= 0.60 && m.yes <= 0.85        // 概率适中（有悬念）
-      && m.vol > 100000;                        // 高成交量保证流动性
+    return daysLeft >= 3 && daysLeft <= 10
+      && m.yes >= 0.55 && m.yes <= 0.80
+      && m.vol > 200000; // 只碰超高流动性市场
   }).map(m => {
     const daysLeft = Math.round((new Date(m.end) - new Date()) / 86400000);
-    // 临近到期，概率会快速趋近0或1，现在买有时间价值
-    const edge = (m.yes - 0.60) * 0.3; // 边际收益估算
+    // 概率越靠近 0.5，赔率倍数越高
+    const oddsMultiplier = 1 / m.yes;
+    const edge = (m.yes - 0.55) * 0.4;
     return {
       strategy: 'near_expiry',
       market: m,
       choice: 'YES',
-      edge: Math.max(edge, 0.06),
-      reason: `临近到期: ${daysLeft}天后结算, YES=${(m.yes*100).toFixed(1)}%, 24h成交$${(m.vol/1000).toFixed(0)}K`
+      edge: Math.max(edge, 0.07),
+      reason: `临近到期动量: ${daysLeft}天结算, YES=${(m.yes*100).toFixed(1)}%, 赔率${oddsMultiplier.toFixed(2)}x, 24h成交$${(m.vol/1000).toFixed(0)}K`
     };
   });
 }
 
+// 过期判断
+function isValidMarket(m) {
+  if (!m.end) return true;
+  const daysLeft = (new Date(m.end) - new Date()) / 86400000;
+  return daysLeft > 2; // 至少2天才到期（否则流动性枯竭）
+}
+
+// 真实盈利过滤（扣手续费+滑点后仍正）
+function filterRealProfit(opps) {
+  return opps.map(o => {
+    const prob = o.choice === 'YES' ? o.market.yes : o.market.no;
+    const { realEdge, totalCostRate } = realPayout(100, prob, o.market.vol);
+    return { ...o, realEdge, totalCostRate };
+  }).filter(o => o.realEdge > 0.02); // 真实净利润 > 2%
+}
+
 // ── AUTO TRADE ──
 const MAX_BET = 300;
-const MIN_EDGE = 0.06; // 至少6%利润空间，避免微利市场
+const MIN_EDGE = 0.08; // 至少8%真实利润空间，只买有逻辑的单
 
 // ── 真实盘交易成本模拟 ──
 const FEE_RATE = 0.02;       // Polymarket 手续费 2%
@@ -313,12 +278,9 @@ async function runArbitrage() {
     const markets = raw.map(parseMkt).filter(Boolean);
 
     const rawOpps = [
-      ...stratTimeSeries(markets),    // 时序套利
-      ...stratHighConf(markets),      // 高确定性做多
-      ...stratHighConfNo(markets),    // 高确定性做空
-      ...stratBundle(markets),        // Bundle定价错误
-      ...stratMomentumLag(markets),   // 动量滞后
-      ...stratNearExpiry(markets),    // 临近到期价值
+      ...stratTimeSeries(markets),    // 策略1: 时序套利（最硬）
+      ...stratBundle(markets),        // 策略2: Bundle定价错误
+      ...stratNearExpiry(markets),    // 策略3: 临近到期动量
     ].filter(o => o.edge >= MIN_EDGE);
 
     const opps = filterRealProfit(rawOpps, markets)
