@@ -7,6 +7,31 @@
 
 const http = require('http');
 const https = require('https');
+
+// ── BTC 实时价格缓存 ──
+let btcPrice = null;
+let btcPriceTs = 0;
+
+async function getBtcPrice() {
+  const now = Date.now();
+  if (btcPrice && now - btcPriceTs < 30000) return btcPrice; // 30秒缓存
+  return new Promise((resolve) => {
+    https.get('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    }, res => {
+      let body = '';
+      res.on('data', d => body += d);
+      res.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          btcPrice = parseFloat(data.price);
+          btcPriceTs = now;
+          resolve(btcPrice);
+        } catch { resolve(null); }
+      });
+    }).on('error', () => resolve(null));
+  });
+}
 const url = require('url');
 const Database = require('better-sqlite3');
 const path = require('path');
@@ -250,6 +275,125 @@ function stratNearExpiry(markets) {
   });
 }
 
+/**
+ * 【策略4】BTC 价格锚定套利 (Crypto Price Anchoring)
+ * 逻辑：用 Binance 实时价格计算 Polymarket BTC 价格市场的"理论概率"
+ * 如果 Polymarket 定价偏离理论概率 > 8%，说明市场滞后，买入被低估方向
+ * 
+ * 计算方式：
+ * - "BTC > $X on date Y"：如果当前价格已经远高于X，概率应该很高
+ * - 用正态分布估算到期时概率（基于BTC日波动率约2-3%）
+ */
+async function stratCryptoAnchor(markets, currentBtcPrice) {
+  if (!currentBtcPrice) return [];
+  const opps = [];
+
+  // BTC 日波动率约 2.5%（历史均值）
+  const dailyVol = 0.025;
+
+  const btcMarkets = markets.filter(m => {
+    if (!isValidMarket(m)) return false;
+    if (m.vol < 50000) return false;
+    const q = m.question.toLowerCase();
+    return (q.includes('bitcoin') || q.includes('btc')) &&
+           (q.includes('above') || q.includes('below') || q.includes('reach') || q.includes('dip'));
+  });
+
+  for (const m of btcMarkets) {
+    // 从问题中提取目标价格
+    const priceMatch = m.question.match(/\$([0-9,]+)/);
+    if (!priceMatch) continue;
+    const targetPrice = parseFloat(priceMatch[1].replace(',', ''));
+
+    // 计算到期剩余天数
+    const daysLeft = (new Date(m.end) - new Date()) / 86400000;
+    if (daysLeft <= 0 || daysLeft > 30) continue;
+
+    // 用对数正态分布估算到期时 BTC > targetPrice 的概率
+    // z = (ln(target/current)) / (vol * sqrt(days))
+    const vol = dailyVol * Math.sqrt(daysLeft);
+    const z = Math.log(targetPrice / currentBtcPrice) / vol;
+    // 正态CDF近似
+    const theoreticalProb = 1 - (0.5 * (1 + erf(z / Math.sqrt(2))));
+
+    const isAbove = m.question.toLowerCase().includes('above') || m.question.toLowerCase().includes('reach');
+    const marketProb = isAbove ? m.yes : m.no;
+    const theoretical = isAbove ? theoreticalProb : (1 - theoreticalProb);
+    const diff = theoretical - marketProb;
+
+    // 理论概率比市场概率高 8% 以上，说明市场低估
+    if (diff > 0.08 && theoretical > 0.15 && theoretical < 0.92) {
+      opps.push({
+        strategy: 'crypto_anchor',
+        market: m,
+        choice: isAbove ? 'YES' : 'NO',
+        edge: diff,
+        reason: `BTC价格锚定: 当前=$${currentBtcPrice.toFixed(0)}, ��标=$${targetPrice.toLocaleString()}, 理论概率=${(theoretical*100).toFixed(1)}%, 市场给${(marketProb*100).toFixed(1)}%, 低估${(diff*100).toFixed(1)}%, ${daysLeft.toFixed(1)}天到期`
+      });
+    }
+  }
+  return opps;
+}
+
+// 误差函数（正态分布CDF用）
+function erf(x) {
+  const a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429, p=0.3275911;
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x);
+  const t = 1.0 / (1.0 + p * x);
+  const y = 1.0 - (((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
+  return sign * y;
+}
+
+/**
+ * 【策略5】BTC 阶梯价格时序套利
+ * 逻辑：同一到期日，"BTC>$64K" 概率必须 >= "BTC>$66K" 概率 >= "BTC>$68K" 概率
+ * 如果出现逆序（低门槛反而概率更低），说明定价异常
+ */
+function stratCryptoLadder(markets) {
+  const opps = [];
+  // 找同截止日期的 BTC "above X" 市场
+  const btcAbove = markets.filter(m =>
+    isValidMarket(m) && m.vol > 30000 &&
+    (m.question.toLowerCase().includes('bitcoin') || m.question.toLowerCase().includes('btc')) &&
+    (m.question.toLowerCase().includes('above') || m.question.toLowerCase().includes('reach'))
+  );
+
+  // 按截止日期分组
+  const byDate = {};
+  btcAbove.forEach(m => {
+    const priceMatch = m.question.match(/\$([0-9,]+)/);
+    if (!priceMatch) return;
+    const price = parseFloat(priceMatch[1].replace(',', ''));
+    const key = m.end?.slice(0, 10) || 'unknown';
+    if (!byDate[key]) byDate[key] = [];
+    byDate[key].push({ ...m, targetPrice: price });
+  });
+
+  for (const [date, group] of Object.entries(byDate)) {
+    if (group.length < 2) continue;
+    group.sort((a, b) => a.targetPrice - b.targetPrice); // 价格从低到高排
+
+    for (let i = 0; i < group.length - 1; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        const low = group[i], high = group[j]; // low.targetPrice < high.targetPrice
+        // 应该: P(BTC>低门槛) >= P(BTC>高门槛)
+        if (low.yes < high.yes - 0.06) {
+          // 低门槛反而概率更低，买低门槛 YES
+          opps.push({
+            strategy: 'crypto_ladder',
+            market: low,
+            choice: 'YES',
+            edge: high.yes - low.yes,
+            reason: `BTC阶梯套利: P(>${low.targetPrice.toLocaleString()})=${(low.yes*100).toFixed(1)}% < P(>${high.targetPrice.toLocaleString()})=${(high.yes*100).toFixed(1)}%, 逻辑矛盾, 价差${((high.yes-low.yes)*100).toFixed(1)}%`
+          });
+        }
+      }
+    }
+  }
+  return opps;
+}
+
 // 过期判断
 function isValidMarket(m) {
   if (!m.end) return true;
@@ -310,10 +454,18 @@ async function runArbitrage() {
     const raw = await fetchMarkets(0, 100);
     const markets = raw.map(parseMkt).filter(Boolean);
 
+    // 拉 BTC 实时价格
+    const btcPrice = await getBtcPrice();
+    console.log(`  BTC 实时价格: $${btcPrice?.toFixed(0) || 'N/A'}`);
+
+    const cryptoOpps = await stratCryptoAnchor(markets, btcPrice);
+
     const rawOpps = [
       ...stratTimeSeries(markets),    // 策略1: 时序套利（最硬）
-      ...stratBundle(markets),        // 策略2: Bundle定价错误
+      ...stratBundle(markets),        // 策略2: Bundle定��错误
       ...stratNearExpiry(markets),    // 策略3: 临近到期动量
+      ...cryptoOpps,                  // 策略4: BTC价格锚定
+      ...stratCryptoLadder(markets),  // 策略5: BTC阶梯价格套利
     ].filter(o => o.edge >= MIN_EDGE);
 
     const opps = filterRealProfit(rawOpps, markets)

@@ -1058,7 +1058,7 @@ function renderPTabContent() {
   const positions = simData.positions || [];
   const closed = simData.closed || [];
   const logs = simData.logs || [];
-  const stratLabel = { time_series:'📐 时序套利', bundle:'🔀 Bundle缺口', near_expiry:'⏳ 临近到期' };
+  const stratLabel = { time_series:'📐 时序套利', bundle:'🔀 Bundle缺口', near_expiry:'⏳ 临近到期', crypto_anchor:'₿ BTC锚定', crypto_ladder:'🪜 BTC阶梯' };
 
   if (curPTab === 'pos') {
     if (!positions.length) {
