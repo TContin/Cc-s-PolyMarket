@@ -172,6 +172,39 @@ function stratHighConfNo(markets) {
 // ── AUTO TRADE ──
 const MAX_BET = 300;
 const MIN_EDGE = 0.06; // 至少6%利润空间，避免微利市场
+
+// ── 真实盘交易成本模拟 ──
+const FEE_RATE = 0.02;       // Polymarket 手续费 2%
+const BASE_SLIPPAGE = 0.005; // 基础滑点 0.5%
+
+// 按流动性估算滑点（流动性越低越高）
+function calcSlippage(vol24h, betAmt) {
+  if (vol24h > 1000000) return 0.002;  // 高流动性 0.2%
+  if (vol24h > 100000)  return 0.005;  // 中流动性 0.5%
+  if (vol24h > 10000)   return 0.012;  // 低流动性 1.2%
+  return 0.025;                         // 极低流动性 2.5%
+}
+
+// 真实盘实际成本：手续费 + 滑点
+function realCost(amount, vol24h) {
+  const slippage = calcSlippage(vol24h, amount);
+  const totalCost = FEE_RATE + slippage;
+  return {
+    effectiveAmt: amount * (1 - totalCost), // 实际生效金额
+    fee: amount * FEE_RATE,
+    slippage: amount * slippage,
+    totalCostRate: totalCost
+  };
+}
+
+// 真实盘实际回报（扣除成本）
+function realPayout(amount, prob, vol24h) {
+  const { effectiveAmt, fee, slippage, totalCostRate } = realCost(amount, vol24h);
+  const grossPayout = effectiveAmt / prob;
+  const netProfit = grossPayout - amount; // 扣除全部成本后净利润
+  const realEdge = netProfit / amount;    // 真实利润率
+  return { grossPayout, netProfit, realEdge, fee, slippage, totalCostRate };
+}
 const MAX_POSITIONS = 20;
 
 async function runArbitrage() {
@@ -180,12 +213,14 @@ async function runArbitrage() {
     const raw = await fetchMarkets(0, 100);
     const markets = raw.map(parseMkt).filter(Boolean);
 
-    const opps = [
+    const rawOpps = [
       ...stratTimeSeries(markets),
       ...stratHighConf(markets),
       ...stratHighConfNo(markets),
-    ].filter(o => o.edge >= MIN_EDGE)
-     .sort((a, b) => b.edge - a.edge);
+    ].filter(o => o.edge >= MIN_EDGE);
+
+    const opps = filterRealProfit(rawOpps, markets)
+      .sort((a, b) => b.realEdge - a.realEdge); // 按真实收益率排序
 
     const user = getUser();
     const openPos = getPositions();
@@ -218,10 +253,14 @@ async function runArbitrage() {
       if (betAmt > balance) continue;
 
       const prob = opp.choice === 'YES' ? opp.market.yes : opp.market.no;
-      const payout = betAmt / prob;
+      const { grossPayout, netProfit, realEdge, totalCostRate } = realPayout(betAmt, prob, opp.market.vol);
+      const payout = grossPayout; // 存真实回报（扣手续费+滑点）
+
+      const fullReason = opp.reason +
+        ` | 手续费+滑点=${(totalCostRate*100).toFixed(1)}% | 真实净利润率=${(realEdge*100).toFixed(1)}%`;
 
       insertPos.run(USER_ID, opp.market.id, opp.market.question, opp.choice, betAmt, prob, payout, opp.strategy);
-      insertLog.run(opp.strategy, opp.market.id, opp.market.question, opp.choice, betAmt, prob, opp.reason);
+      insertLog.run(opp.strategy, opp.market.id, opp.market.question, opp.choice, betAmt, prob, fullReason);
       balance -= betAmt;
       openKeys.add(key);
       count++;

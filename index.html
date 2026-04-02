@@ -500,17 +500,19 @@ body { background: var(--bg); font-family: var(--font); color: var(--text); min-
         </div>
         <div class="payout-rows">
           <div class="prow">
-            <span class="prow-l">胜出赔率</span>
+            <span class="prow-l">实际回报</span>
             <span class="prow-v" id="payOut">—</span>
           </div>
           <div class="prow">
-            <span class="prow-l">胜出收益</span>
+            <span class="prow-l">净收益</span>
             <span class="prow-v up" id="profOut">—</span>
           </div>
+          <div class="prow" style="border-top:1px dashed var(--border);padding-top:8px">
+            <span class="prow-l" style="font-size:11px">交易成本</span>
+            <span style="font-size:11px;color:var(--red)" id="costNote">—</span>
+          </div>
           <div class="prow" style="border-top:none;padding-top:0">
-            <span style="font-size:11px;color:var(--text3)">
-              仅在所选方向结果正确时获得回报
-            </span>
+            <span style="font-size:11px;color:var(--text3)">已含 2% 手续费 + 滑点估算</span>
           </div>
         </div>
         <button class="sub-btn" onclick="placeBet()">确认下注</button>
@@ -915,14 +917,28 @@ function pick(c) {
   calcPay();
 }
 function setAmt(n) { document.getElementById('amtIn').value = n; calcPay(); }
+const FEE_RATE = 0.02;
+function calcSlippage(vol) {
+  if (vol > 1000000) return 0.002;
+  if (vol > 100000)  return 0.005;
+  if (vol > 10000)   return 0.012;
+  return 0.025;
+}
 function calcPay() {
   if (!selChoice || !selMkt) return;
   const amt = parseFloat(document.getElementById('amtIn').value)||0;
   const prob = selChoice==='YES' ? selMkt.yes : selMkt.no;
   if (!prob) return;
-  const pay = amt/prob;
-  document.getElementById('payOut').textContent  = fUSD(pay);
-  document.getElementById('profOut').textContent = '+'+fUSD(pay-amt);
+  const slip = calcSlippage(selMkt.vol);
+  const costRate = FEE_RATE + slip;
+  const effectiveAmt = amt * (1 - costRate);
+  const pay = effectiveAmt / prob;
+  const profit = pay - amt;
+  document.getElementById('payOut').textContent = fUSD(pay);
+  document.getElementById('profOut').textContent = (profit>=0?'+':'')+fUSD(profit);
+  // 更新成本说明
+  const costEl = document.getElementById('costNote');
+  if (costEl) costEl.textContent = `手续费 ${fUSD(amt*FEE_RATE)} + 滑点 ${fUSD(amt*slip)}`;
 }
 function placeBet() {
   if (!selChoice) { toast('请先选择 YES 或 NO'); return; }
@@ -1128,8 +1144,14 @@ function renderPTabContent() {
     }
     el.innerHTML = logs.map(l => {
       const date = new Date(l.ts * 1000).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-      const payout = l.amount / l.prob;
-      const profit = payout - l.amount;
+      const slip = l.amount > 0 ? (
+        // 简单用5%估算（日志里没存 vol）
+        0.005
+      ) : 0;
+      const costRate = 0.02 + slip;
+      const effectiveAmt = l.amount * (1 - costRate);
+      const payout = effectiveAmt / l.prob;
+      const profit = payout - l.amount; // 真实净利润（已扣成本）
       const zh = zhCache[l.market_id] || zhCache[l.question] || '';
       return `<div class="mcard" style="cursor:default;margin-bottom:10px">
         <div class="mcard-body">
@@ -1154,8 +1176,8 @@ function renderPTabContent() {
               <div style="font-size:15px;font-weight:800;letter-spacing:-0.3px">${(l.prob*100).toFixed(1)}%</div>
             </div>
             <div style="background:var(--bg);border-radius:9px;padding:9px 11px">
-              <div style="font-size:10.5px;color:var(--text2);margin-bottom:3px">潜在回报</div>
-              <div style="font-size:15px;font-weight:800;letter-spacing:-0.3px;color:var(--green)">+${fUSD(profit)}</div>
+              <div style="font-size:10.5px;color:var(--text2);margin-bottom:3px">真实净利润</div>
+              <div style="font-size:15px;font-weight:800;letter-spacing:-0.3px;${profit>=0?'color:var(--green)':' color:var(--red)'}">+${fUSD(profit)}</div>
             </div>
           </div>
           <div style="margin-top:10px;padding:8px 10px;background:var(--bg);border-radius:9px;font-size:12px;color:var(--text2);line-height:1.5">
