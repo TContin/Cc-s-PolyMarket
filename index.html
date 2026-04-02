@@ -1115,15 +1115,44 @@ function renderPTabContent() {
     }
     el.innerHTML = logs.map(l => {
       const date = new Date(l.ts * 1000).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-      return `<div class="plog">
-        <div class="plog-header">
-          <span class="plog-strat">${stratLabel[l.strategy]||l.strategy}</span>
-          <span class="plog-choice ${l.choice==='YES'?'badge-yes':'badge-no'}">${l.choice}</span>
-          <strong style="font-size:13px">${fUSD(l.amount)}</strong>
-          <span class="plog-date">${date}</span>
+      const payout = l.amount / l.prob;
+      const profit = payout - l.amount;
+      const zh = zhCache[l.market_id] || '';
+      return `<div class="mcard" style="cursor:default;margin-bottom:10px">
+        <div class="mcard-body">
+          <div class="mcard-top">
+            <div class="mcard-icon">${l.choice==='YES'?'🤖':'🤖'}</div>
+            <div class="mcard-info">
+              <div class="mcard-en">${l.question.slice(0,65)}${l.question.length>65?'…':''}</div>
+              <div class="mcard-zh">${zh||'&nbsp;'}</div>
+              <div class="mcard-tags" style="margin-top:4px">
+                <span class="plog-strat">${stratLabel[l.strategy]||l.strategy}</span>
+                <span class="pcard-badge ${l.choice==='YES'?'badge-yes':'badge-no'}">${l.choice}</span>
+              </div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px">
+            <div style="background:var(--bg);border-radius:9px;padding:9px 11px">
+              <div style="font-size:10.5px;color:var(--text2);margin-bottom:3px">买入金额</div>
+              <div style="font-size:15px;font-weight:800;letter-spacing:-0.3px">${fUSD(l.amount)}</div>
+            </div>
+            <div style="background:var(--bg);border-radius:9px;padding:9px 11px">
+              <div style="font-size:10.5px;color:var(--text2);margin-bottom:3px">市场概率</div>
+              <div style="font-size:15px;font-weight:800;letter-spacing:-0.3px">${(l.prob*100).toFixed(1)}%</div>
+            </div>
+            <div style="background:var(--bg);border-radius:9px;padding:9px 11px">
+              <div style="font-size:10.5px;color:var(--text2);margin-bottom:3px">潜在回报</div>
+              <div style="font-size:15px;font-weight:800;letter-spacing:-0.3px;color:var(--green)">+${fUSD(profit)}</div>
+            </div>
+          </div>
+          <div style="margin-top:10px;padding:8px 10px;background:var(--bg);border-radius:9px;font-size:12px;color:var(--text2);line-height:1.5">
+            💡 ${l.reason}
+          </div>
         </div>
-        <div class="plog-q">${l.question.slice(0,70)}${l.question.length>70?'…':''}</div>
-        <div class="plog-reason">${l.reason}</div>
+        <div class="mcard-foot">
+          <span class="mcard-date">🗓 ${date}</span>
+          <span style="font-size:12px;color:var(--text3)">赔率 ${(1/l.prob).toFixed(2)}x</span>
+        </div>
       </div>`;
     }).join('');
   }
