@@ -992,32 +992,69 @@ function renderPTabContent() {
   const stratLabel = { time_series:'📐 时序套利', high_conf:'🎯 高确YES', high_conf_no:'🔒 高确NO' };
 
   if (curPTab === 'pos') {
-    if (!positions.length) {
-      el.innerHTML = '<div class="empty" style="padding:30px 0"><div class="empty-ico">🤖</div>机器人扫描中…</div>';
-      return;
-    }
-    el.innerHTML = positions.map(p => {
+    // 两栏布局
+    const posCard = p => {
       const mkt = mkts.find(m => m.id === p.market_id);
       const curProb = mkt ? (p.choice === 'YES' ? mkt.yes : mkt.no) : p.prob;
       const curVal = p.amount / p.prob * curProb;
       const pnl = curVal - p.amount;
       const zh = zhCache[p.market_id] || '';
-      const date = new Date(p.opened_at * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      const date = new Date(p.opened_at * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric'});
       return `<div class="pcard">
-        <div class="pcard-q">${p.question.slice(0,65)}${p.question.length>65?'…':''}</div>
+        <div class="pcard-q">${p.question.slice(0,60)}${p.question.length>60?'…':''}</div>
         ${zh ? `<div class="pcard-zh">${zh}</div>` : ''}
         <div class="pcard-row">
           <span class="pcard-badge ${p.choice==='YES'?'badge-yes':'badge-no'}">${p.choice}</span>
           <span style="font-size:10px;color:var(--accent)">${stratLabel[p.strategy]||p.strategy}</span>
+        </div>
+        <div class="pcard-row" style="margin-top:6px">
           <span class="pcard-num">成本 <strong>${fUSD(p.amount)}</strong></span>
-          <span class="pcard-num">潜回报 <strong>${fUSD(p.payout)}</strong></span>
           <span class="pcard-num ${pnl>=0?'up':'dn'}">浮盈 <strong>${pnl>=0?'+':''}${fUSD(pnl)}</strong></span>
           <span style="font-size:10px;color:var(--text3);margin-left:auto">${date}</span>
         </div>
       </div>`;
-    }).join('');
+    };
+    const closedCard = p => {
+      const pnl = p.pnl || 0;
+      const zh = zhCache[p.market_id] || '';
+      const date = new Date((p.closed_at||p.opened_at) * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric'});
+      return `<div class="pcard">
+        <div class="pcard-q">${p.question.slice(0,60)}${p.question.length>60?'…':''}</div>
+        ${zh ? `<div class="pcard-zh">${zh}</div>` : ''}
+        <div class="pcard-row">
+          <span class="pcard-badge ${p.choice==='YES'?'badge-yes':'badge-no'}">${p.choice}</span>
+          <span class="pcard-num">成本 <strong>${fUSD(p.amount)}</strong></span>
+          <span class="pcard-num ${pnl>=0?'up':'dn'}">盈亏 <strong>${pnl>=0?'+':''}${fUSD(pnl)}</strong></span>
+          <span style="font-size:10px;color:var(--text3);margin-left:auto">${date}</span>
+        </div>
+      </div>`;
+    };
+
+    const leftHtml = positions.length
+      ? positions.map(posCard).join('')
+      : '<div class="empty" style="padding:24px 0"><div class="empty-ico">🤖</div>扫描中…</div>';
+    const rightHtml = closed.length
+      ? closed.map(closedCard).join('')
+      : '<div class="empty" style="padding:24px 0"><div class="empty-ico">📋</div>暂无记录</div>';
+
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">
+            📈 当前持仓 <span style="color:var(--accent)">${positions.length}</span>
+          </div>
+          ${leftHtml}
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">
+            ✅ 已结束 <span style="color:var(--green)">${closed.length}</span>
+          </div>
+          ${rightHtml}
+        </div>
+      </div>`;
 
   } else if (curPTab === 'closed') {
+    // 这个 tab 保留但内容合并到 pos 了，这里显示完整历史
     if (!closed.length) {
       el.innerHTML = '<div class="empty" style="padding:30px 0"><div class="empty-ico">📋</div>暂无平仓记录</div>';
       return;
@@ -1025,7 +1062,7 @@ function renderPTabContent() {
     el.innerHTML = closed.map(p => {
       const pnl = p.pnl || 0;
       const zh = zhCache[p.market_id] || '';
-      const date = new Date(p.closed_at * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric'});
+      const date = new Date((p.closed_at||p.opened_at) * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric'});
       return `<div class="pcard">
         <div class="pcard-q">${p.question.slice(0,65)}${p.question.length>65?'…':''}</div>
         ${zh ? `<div class="pcard-zh">${zh}</div>` : ''}
