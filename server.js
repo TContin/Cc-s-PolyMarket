@@ -169,6 +169,105 @@ function stratHighConfNo(markets) {
     }));
 }
 
+/**
+ * 策略4: Bundle 套利 —— YES + NO 价格之和 < 0.98（不到1）
+ * 同一市场的 YES+NO 理论上应该=1，出现 <0.98 时买入便宜方
+ * 参考: ImMike/polymarket-arbitrage, m0wer/polyarb
+ */
+function stratBundle(markets) {
+  const opps = [];
+  for (const m of markets) {
+    if (!isValidMarket(m) || m.vol < 30000) continue;
+    const sum = m.yes + m.no;
+    // YES + NO 正常应接近1（包含手续费一般 0.96-0.99 之间）
+    // 如果 sum < 0.96，说明有定价错误，买两边都能套利
+    if (sum < 0.96 && sum > 0.50) {
+      const edge = 1 - sum; // 套利空间
+      // 买概率更低的那边（更便宜）
+      const choice = m.yes <= m.no ? 'YES' : 'NO';
+      const prob = choice === 'YES' ? m.yes : m.no;
+      opps.push({
+        strategy: 'bundle',
+        market: m,
+        choice,
+        edge,
+        reason: `Bundle套利: YES=${(m.yes*100).toFixed(1)}%+NO=${(m.no*100).toFixed(1)}%=${(sum*100).toFixed(1)}%<100%, 套利空间${(edge*100).toFixed(1)}%`
+      });
+    }
+  }
+  return opps;
+}
+
+/**
+ * 策略5: 动量滞后套利 —— 市场定价滞后于其他市场的信息更新
+ * 同一主题，找 YES 价格差异大于15% 的配对（市场间定价不一致）
+ * 参考: chudi.dev 的 BTC 动量策略思路
+ */
+function stratMomentumLag(markets) {
+  const opps = [];
+  // 按主题分组（取问题前50字）
+  const topicGroups = {};
+  for (const m of markets) {
+    if (!isValidMarket(m) || m.vol < 20000) continue;
+    // 提取关键词作为主题key
+    const words = m.question.toLowerCase().match(/(trump|fed|bitcoin|btc|iran|ukraine|election|president|rate|war|ceasefire)/g);
+    if (!words || words.length === 0) continue;
+    const key = words.sort().join('-');
+    if (!topicGroups[key]) topicGroups[key] = [];
+    topicGroups[key].push(m);
+  }
+  for (const [topic, group] of Object.entries(topicGroups)) {
+    if (group.length < 2) continue;
+    // 找同主题里 YES 价格差异最大的配对
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        const a = group[i], b = group[j];
+        const diff = Math.abs(a.yes - b.yes);
+        // 两个题目相似但 YES 价格差 > 15%，说明有定价偏差
+        if (diff > 0.15) {
+          const low = a.yes < b.yes ? a : b;
+          const high = a.yes < b.yes ? b : a;
+          // 买被低估的那个
+          opps.push({
+            strategy: 'momentum_lag',
+            market: low,
+            choice: 'YES',
+            edge: diff * 0.5, // 保守估计可以捕捉50%的价差
+            reason: `动量滞后: [${low.question.slice(0,40)}] YES=${(low.yes*100).toFixed(0)}% vs [${high.question.slice(0,40)}] YES=${(high.yes*100).toFixed(0)}%, 价差${(diff*100).toFixed(0)}%`
+          });
+        }
+      }
+    }
+  }
+  return opps;
+}
+
+/**
+ * 策略6: 临近到期高价值 —— 到期7天内、概率 60-80%、高成交量
+ * 事件即将结算，市场往往在最后阶段产生剧烈波动和套利机会
+ * 参考: m0wer/polyarb close-markets 策略
+ */
+function stratNearExpiry(markets) {
+  return markets.filter(m => {
+    if (!m.end || !isValidMarket(m)) return false;
+    const daysLeft = (new Date(m.end) - new Date()) / 86400000;
+    return daysLeft >= 1 && daysLeft <= 7      // 1-7天到期
+      && m.yes >= 0.60 && m.yes <= 0.85        // 概率适中（有悬念）
+      && m.vol > 100000;                        // 高成交量保证流动性
+  }).map(m => {
+    const daysLeft = Math.round((new Date(m.end) - new Date()) / 86400000);
+    // 临近到期，概率会快速趋近0或1，现在买有时间价值
+    const edge = (m.yes - 0.60) * 0.3; // 边际收益估算
+    return {
+      strategy: 'near_expiry',
+      market: m,
+      choice: 'YES',
+      edge: Math.max(edge, 0.06),
+      reason: `临近到期: ${daysLeft}天后结算, YES=${(m.yes*100).toFixed(1)}%, 24h成交$${(m.vol/1000).toFixed(0)}K`
+    };
+  });
+}
+
 // ── AUTO TRADE ──
 const MAX_BET = 300;
 const MIN_EDGE = 0.06; // 至少6%利润空间，避免微利市场
@@ -214,9 +313,12 @@ async function runArbitrage() {
     const markets = raw.map(parseMkt).filter(Boolean);
 
     const rawOpps = [
-      ...stratTimeSeries(markets),
-      ...stratHighConf(markets),
-      ...stratHighConfNo(markets),
+      ...stratTimeSeries(markets),    // 时序套利
+      ...stratHighConf(markets),      // 高确定性做多
+      ...stratHighConfNo(markets),    // 高确定性做空
+      ...stratBundle(markets),        // Bundle定价错误
+      ...stratMomentumLag(markets),   // 动量滞后
+      ...stratNearExpiry(markets),    // 临近到期价值
     ].filter(o => o.edge >= MIN_EDGE);
 
     const opps = filterRealProfit(rawOpps, markets)

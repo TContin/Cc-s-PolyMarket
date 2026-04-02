@@ -1058,7 +1058,7 @@ function renderPTabContent() {
   const positions = simData.positions || [];
   const closed = simData.closed || [];
   const logs = simData.logs || [];
-  const stratLabel = { time_series:'📐 时序套利', high_conf:'🎯 高确YES', high_conf_no:'🔒 高确NO' };
+  const stratLabel = { time_series:'📐 时序套利', high_conf:'🎯 高确YES', high_conf_no:'🔒 高确NO', bundle:'🔀 Bundle套利', momentum_lag:'⚡ 动量滞后', near_expiry:'⏳ 临近到期' };
 
   if (curPTab === 'pos') {
     if (!positions.length) {
