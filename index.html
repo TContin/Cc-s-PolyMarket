@@ -384,9 +384,10 @@ body { background: var(--bg); font-family: var(--font); color: var(--text); min-
     <div class="logo-name">Poly<span>market</span></div>
   </div>
   <div class="ticker-wrap"><div class="ticker-track" id="tickerTrack"></div></div>
-  <div class="balance-chip">
+  <div class="balance-chip" onclick="openProfile()" style="cursor:pointer">
     <div class="balance-dot"></div>
     <span id="balDisp">$1,000.00</span>
+    <span style="font-size:11px;color:var(--text3);margin-left:2px">▾</span>
   </div>
 </div>
 
@@ -455,10 +456,7 @@ body { background: var(--bg); font-family: var(--font); color: var(--text); min-
     <div class="port-panel">
       <div class="sec-head">
         <div class="sec-title">💼 我的持仓</div>
-        <div style="display:flex;gap:6px">
-          <button class="chip-btn" style="color:var(--accent)" onclick="triggerArb()">🤖 扫描</button>
-          <button class="chip-btn" style="color:var(--red)" onclick="doReset()">重置</button>
-        </div>
+        <button class="chip-btn" style="color:var(--accent)" onclick="openProfile()">查看详情 ›</button>
       </div>
       <div id="portList"></div>
     </div>
