@@ -885,6 +885,150 @@ function triggerArb() {
   }).catch(console.error);
 }
 
+
+// ── PROFILE CENTER ──
+let curPTab = 'pos';
+
+function openProfile() {
+  renderProfile();
+  document.getElementById('profileOverlay').classList.add('open');
+}
+function closeProfile(e) {
+  if (!e || e.target === document.getElementById('profileOverlay'))
+    document.getElementById('profileOverlay').classList.remove('open');
+}
+function switchPTab(t) {
+  curPTab = t;
+  document.querySelectorAll('.ptab').forEach(el => el.classList.remove('active'));
+  document.getElementById('ptab-' + t).classList.add('active');
+  renderPTabContent();
+}
+
+function renderProfile() {
+  const positions = simData.positions || [];
+  const closed = simData.closed || [];
+  const bal = simData.balance || 0;
+  const invested = positions.reduce((s, p) => s + p.amount, 0);
+  const logs = simData.logs || [];
+
+  // 浮动盈亏
+  let floatPnl = 0;
+  positions.forEach(p => {
+    const mkt = mkts.find(m => m.id === p.market_id);
+    if (mkt) {
+      const curProb = p.choice === 'YES' ? mkt.yes : mkt.no;
+      floatPnl += (p.amount / p.prob * curProb) - p.amount;
+    }
+  });
+
+  const realPnl = simData.totalPnl || 0;
+  const totalPnl = floatPnl + realPnl;
+  const initBal = 10000;
+  const totalAsset = bal + invested;
+  const roi = ((totalAsset - initBal) / initBal * 100);
+
+  // 胜率
+  const wins = closed.filter(p => (p.pnl || 0) > 0).length;
+  const winRate = closed.length ? (wins / closed.length * 100).toFixed(0) : '—';
+
+  document.getElementById('profileStats').innerHTML = `
+    <div class="pstat">
+      <div class="pstat-l">可用余额</div>
+      <div class="pstat-v">${fUSD(bal)}</div>
+      <div class="pstat-s">模拟 USDC</div>
+    </div>
+    <div class="pstat">
+      <div class="pstat-l">总资产</div>
+      <div class="pstat-v ${roi>=0?'up':'dn'}">${fUSD(totalAsset)}</div>
+      <div class="pstat-s">ROI ${roi>=0?'+':''}${roi.toFixed(1)}%</div>
+    </div>
+    <div class="pstat">
+      <div class="pstat-l">持仓浮盈</div>
+      <div class="pstat-v ${floatPnl>=0?'up':'dn'}">${floatPnl>=0?'+':''}${fUSD(floatPnl)}</div>
+      <div class="pstat-s">${positions.length} 笔持仓</div>
+    </div>
+    <div class="pstat">
+      <div class="pstat-l">已实现盈亏</div>
+      <div class="pstat-v ${realPnl>=0?'up':'dn'}">${realPnl>=0?'+':''}${fUSD(realPnl)}</div>
+      <div class="pstat-s">胜率 ${winRate}%</div>
+    </div>
+  `;
+
+  document.getElementById('ptab-pos-cnt').textContent = positions.length;
+  document.getElementById('ptab-closed-cnt').textContent = closed.length;
+  renderPTabContent();
+}
+
+function renderPTabContent() {
+  const el = document.getElementById('ptab-content');
+  const positions = simData.positions || [];
+  const closed = simData.closed || [];
+  const logs = simData.logs || [];
+  const stratLabel = { time_series:'📐 时序套利', high_conf:'🎯 高确YES', high_conf_no:'🔒 高确NO' };
+
+  if (curPTab === 'pos') {
+    if (!positions.length) {
+      el.innerHTML = '<div class="empty" style="padding:30px 0"><div class="empty-ico">🤖</div>机器人扫描中…</div>';
+      return;
+    }
+    el.innerHTML = positions.map(p => {
+      const mkt = mkts.find(m => m.id === p.market_id);
+      const curProb = mkt ? (p.choice === 'YES' ? mkt.yes : mkt.no) : p.prob;
+      const curVal = p.amount / p.prob * curProb;
+      const pnl = curVal - p.amount;
+      const zh = zhCache[p.market_id] || '';
+      const date = new Date(p.opened_at * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      return `<div class="pcard">
+        <div class="pcard-q">${p.question.slice(0,65)}${p.question.length>65?'…':''}</div>
+        ${zh ? `<div class="pcard-zh">${zh}</div>` : ''}
+        <div class="pcard-row">
+          <span class="pcard-badge ${p.choice==='YES'?'badge-yes':'badge-no'}">${p.choice}</span>
+          <span style="font-size:10px;color:var(--accent)">${stratLabel[p.strategy]||p.strategy}</span>
+          <span class="pcard-num">成本 <strong>${fUSD(p.amount)}</strong></span>
+          <span class="pcard-num">潜回报 <strong>${fUSD(p.payout)}</strong></span>
+          <span class="pcard-num ${pnl>=0?'up':'dn'}">浮盈 <strong>${pnl>=0?'+':''}${fUSD(pnl)}</strong></span>
+          <span style="font-size:10px;color:var(--text3);margin-left:auto">${date}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+  } else if (curPTab === 'closed') {
+    if (!closed.length) {
+      el.innerHTML = '<div class="empty" style="padding:30px 0"><div class="empty-ico">📋</div>暂无平仓记录</div>';
+      return;
+    }
+    el.innerHTML = closed.map(p => {
+      const pnl = p.pnl || 0;
+      const zh = zhCache[p.market_id] || '';
+      const date = new Date(p.closed_at * 1000).toLocaleDateString('zh-CN',{month:'short',day:'numeric'});
+      return `<div class="pcard">
+        <div class="pcard-q">${p.question.slice(0,65)}${p.question.length>65?'…':''}</div>
+        ${zh ? `<div class="pcard-zh">${zh}</div>` : ''}
+        <div class="pcard-row">
+          <span class="pcard-badge ${p.choice==='YES'?'badge-yes':'badge-no'}">${p.choice}</span>
+          <span class="pcard-num">成本 <strong>${fUSD(p.amount)}</strong></span>
+          <span class="pcard-num ${pnl>=0?'up':'dn'}">盈亏 <strong>${pnl>=0?'+':''}${fUSD(pnl)}</strong></span>
+          <span style="font-size:10px;color:var(--text3);margin-left:auto">${date}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+  } else {
+    if (!logs.length) {
+      el.innerHTML = '<div class="empty" style="padding:30px 0"><div class="empty-ico">🤖</div>暂无日志</div>';
+      return;
+    }
+    el.innerHTML = logs.map(l => {
+      const date = new Date(l.ts * 1000).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      return `<div class="plog">
+        <span class="plog-strat">[${stratLabel[l.strategy]||l.strategy}]</span>
+        ${l.choice} $${l.amount} · ${l.question.slice(0,50)}…
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${l.reason.slice(0,80)} · ${date}</div>
+      </div>`;
+    }).join('');
+  }
+}
+
 // ── BALANCE DISPLAY ──
 function updBal() { document.getElementById('balDisp').textContent = fUSD(bal); }
 
